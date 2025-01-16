@@ -8,10 +8,10 @@ from pathlib import Path
 from tqdm import tqdm
 
 # Custom modules
-from salmonn_utils import SALMONNTestDataset, load_preprocessor, load_model
+from utils.salmonn_utils import SALMONNTestDataset, load_preprocessor, load_model
 from config import Config
-from utils import get_dataloader, prepare_sample
-from metrics import compute_wer, compute_spider
+from utils.utils import get_dataloader, prepare_sample
+from utils.metrics import compute_wer, compute_spider
 
 
 def parse_args():
@@ -55,7 +55,7 @@ def main(args):
     # Load data
     dataloader = get_dataset(cfg.config.datasets, cfg.config.run, args.task)
 
-    with open("prompts/test_prompt.json", "r") as f:
+    with open("data/prompts/test_prompt.json", "r") as f:
         test_prompt = json.load(f)
 
     # Evaluation

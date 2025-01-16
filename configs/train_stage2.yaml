@@ -44,8 +44,8 @@ model:
 
   multi_prompt: True
   prompt_template: "USER: {}\nASSISTANT:"
-  prompt_path: "prompts/train_prompt.json"
-  test_prompt_path: "prompts/test_prompt.json"
+  prompt_path: "data/prompts/train_prompt.json"
+  test_prompt_path: "data/prompts/test_prompt.json"
   max_txt_len: 300
   end_sym: "</s>"
 

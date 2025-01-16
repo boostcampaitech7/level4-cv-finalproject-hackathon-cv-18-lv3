@@ -21,7 +21,7 @@ import soundfile as sf
 import numpy as np
 import librosa
 
-from dist_utils import is_main_process, get_world_size, get_rank
+from utils.dist_utils import is_main_process, get_world_size, get_rank
 
 
 def now():

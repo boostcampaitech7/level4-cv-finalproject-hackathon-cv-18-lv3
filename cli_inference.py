@@ -19,7 +19,7 @@ from transformers import WhisperFeatureExtractor
 
 from config import Config
 from models.salmonn import SALMONN
-from utils import prepare_one_sample
+from utils.utils import prepare_one_sample
 
 
 parser = argparse.ArgumentParser()

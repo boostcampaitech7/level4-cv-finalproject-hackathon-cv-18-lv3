@@ -23,10 +23,10 @@ import wandb
 
 from utils import *
 from config import Config
-from dist_utils import get_rank, init_distributed_mode
+from utils.dist_utils import get_rank, init_distributed_mode
 from models import load_model
 from dataset import SALMONNDataset
-from runner import Runner
+from utils.runner import Runner
 
 
 def parse_args():

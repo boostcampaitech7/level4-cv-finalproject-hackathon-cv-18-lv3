@@ -8,7 +8,7 @@ from collections import defaultdict, deque
 import torch
 import torch.distributed as dist
 
-from dist_utils import is_dist_avail_and_initialized, is_main_process
+from utils.dist_utils import is_dist_avail_and_initialized, is_main_process
 
 
 class SmoothedValue(object):
