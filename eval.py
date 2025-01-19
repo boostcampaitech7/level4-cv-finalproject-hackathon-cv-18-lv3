@@ -17,6 +17,7 @@ from utils.metrics import compute_wer, compute_spider
 
 from dotenv import load_dotenv
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -107,7 +108,7 @@ def main(args):
     # Load data
     dataloader = get_dataset(cfg.config.datasets, cfg.config.run, args.task, args.make_submission)
 
-    with open("data/prompts/test_prompt.json", "r") as f:
+    with open("/data/yh/level4-cv-finalproject-hackathon-cv-18-lv3/data/prompts/test_prompt.json", "r") as f:
         test_prompt = json.load(f)
 
     # Evaluation

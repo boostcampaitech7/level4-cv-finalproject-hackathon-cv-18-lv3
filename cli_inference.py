@@ -21,6 +21,7 @@ from config import Config
 from models.salmonn import SALMONN
 from utils.utils import prepare_one_sample
 
+from dotenv import load_dotenv
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--cfg-path", type=str, required=True, help='path to configuration file')
@@ -35,6 +36,9 @@ parser.add_argument(
 
 args = parser.parse_args()
 cfg = Config(args)
+assert cfg.config.model.token in ('', "", "<hf_token>"), "Please remove the hf_token from the .yaml file. You must replace it with '' or <hf_token> and create .env file and write 'HF_TOKEN=<your token>' in it to safetly preceed"
+assert load_dotenv(".env"), "Please create .env file and write 'HF_TOKEN=<your token>'"
+cfg.config.model.token = os.getenv("HF_TOKEN")
 
 model = SALMONN.from_config(cfg.config.model)
 model.to(args.device)

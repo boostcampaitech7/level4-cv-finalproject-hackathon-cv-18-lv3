@@ -23,6 +23,8 @@ from dataset import SALMONNDataset
 from utils.utils import get_dataloader, prepare_sample
 from models.salmonn import SALMONN
 
+from dotenv import load_dotenv
+
 
 def load_model(salmonn_preprocessor):
     model = salmonn_preprocessor.llama_model
@@ -171,6 +173,10 @@ def main(args):
 
     print("Force batch size as 1")
     cfg.config.run.batch_size_eval = 1
+
+    assert cfg.config.model.token in ('', "", "<hf_token>"), "Please remove the hf_token from the .yaml file. You must replace it with '' or <hf_token> and create .env file and write 'HF_TOKEN=<your token>' in it to safetly preceed"
+    assert load_dotenv(".env"), "Please create .env file and write 'HF_TOKEN=<your token>'"
+    cfg.config.model.token = os.getenv("HF_TOKEN")
 
     # Load model
     salmonn_preprocessor = load_preprocessor(cfg)
