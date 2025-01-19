@@ -45,7 +45,8 @@ def parse_args():
     # --- New options ---
     parser.add_argument("--mode", type=str, default="valid_aac", 
                     help="Mode to evaluate. Supports submission and validation modes for ASR and AAC tasks.", 
-                    choices=['submission_asr', 'submission_aac', 'valid_asr', 'valid_aac'])
+                    choices=['submission_asr', 'submission_aac', 'submission_asr_aac', 'submission_aac_asr',
+                             'valid_asr', 'valid_aac', 'valid_asr_aac', 'valid_aac_asr'])
     # --- New options end ---
 
     args = parser.parse_args()
@@ -57,6 +58,7 @@ def parse_args():
         args.mode = convert_task_to_mode(args.task, args.skip_scoring)
 
     # --- Override Previous Version Args ---
+    args.tasks = args.mode.split("_")[1:]
     args.task = args.mode.split("_")[1]
     args.make_submission = args.mode.split("_")[0] == "submission"
 
@@ -93,8 +95,16 @@ def replace_test_ann_path(cfg):
     return cfg
 
 def main(args):
+    # 기존 입력
+    # python evaluate_salmonn.py --mode submission_asr
+    # submission_asr, submission_aac, valid_asr, valid_aac
+
+    # TODO submission_asr_aac, submission_aac_asr 형식으로 받아와서 aac와 asr 값에 따라 하나만 하거나
+    # 둘다 할 수 있도록 변경하고자 함
+
     cfg = Config(args)
-    cfg = replace_test_ann_path(cfg)
+    # cfg = replace_test_ann_path(cfg) # asr, aac에 따라 .yaml에 설정되어 있는 경로를
+    # cfg.config.datasets.test_ann_path을 설정함
 
     assert cfg.config.model.token in ('', "", "<hf_token>"), "Please remove the hf_token from the .yaml file. You must replace it with '' or <hf_token> and create .env file and write 'HF_TOKEN=<your token>' in it to safetly preceed"
     assert load_dotenv(".env"), "Please create .env file and write 'HF_TOKEN=<your token>'"
@@ -105,83 +115,91 @@ def main(args):
     llama_model, tokenizer = load_model(salmonn_preprocessor)
     salmonn_preprocessor.llama_model = llama_model
 
-    # Load data
-    dataloader = get_dataset(cfg.config.datasets, cfg.config.run, args.task, args.make_submission)
+    # Load data 
+    # 설정한 .yaml에 따라 cfg.config.datasets.test_ann_path을 바탕으로 데이터셋을 받아옴
+    # 이때 submission이면 submission 생성할 수 있도록 하고, 그 외의 경우 ref를 받아옴
+    # dataloader = get_dataset(cfg.config.datasets, cfg.config.run, args.task, args.make_submission)
 
+    # test에 사용되는 prompt
     with open("/data/yh/level4-cv-finalproject-hackathon-cv-18-lv3/data/prompts/test_prompt.json", "r") as f:
         test_prompt = json.load(f)
 
-    # Evaluation
-    testset_ids, hyps, refs = [], [], []
-    for samples in tqdm(dataloader):
-        testset_id = samples["testset_id"]
-        testset_ids.extend(testset_id)
+    for task in args.tasks:
+        args.task = task
+        cfg = replace_test_ann_path(cfg)
+        
+        dataloader = get_dataset(cfg.config.datasets, cfg.config.run, args.task, args.make_submission)
+        # Evaluation
+        testset_ids, hyps, refs = [], [], []
+        for samples in tqdm(dataloader):
+            testset_id = samples["testset_id"]
+            testset_ids.extend(testset_id)
 
-        # Preprocess
-        samples = prepare_sample(samples, cuda_enabled=torch.cuda.is_available())
-        batch_size = samples["spectrogram"].shape[0]
-        spectrogram = samples["spectrogram"]
-        raw_wav = samples.get("raw_wav", None)
-        audio_padding_mask = samples.get("padding_mask", None)
-        speech_embeds, speech_atts = salmonn_preprocessor.encode_speech(spectrogram, raw_wav=raw_wav, audio_padding_mask=audio_padding_mask)
+            # Preprocess
+            samples = prepare_sample(samples, cuda_enabled=torch.cuda.is_available())
+            batch_size = samples["spectrogram"].shape[0]
+            spectrogram = samples["spectrogram"]
+            raw_wav = samples.get("raw_wav", None)
+            audio_padding_mask = samples.get("padding_mask", None)
+            speech_embeds, speech_atts = salmonn_preprocessor.encode_speech(spectrogram, raw_wav=raw_wav, audio_padding_mask=audio_padding_mask)
 
-        # Add prompt embeds + audio embed 
-        prompts = [test_prompt[task] for task in samples['task']]
-        templated_prompts = [cfg.config.model.prompt_template.format(prompt) for prompt in prompts]
+            # Add prompt embeds + audio embed 
+            prompts = [test_prompt[task] for task in samples['task']]
+            templated_prompts = [cfg.config.model.prompt_template.format(prompt) for prompt in prompts]
 
-        speech_embeds, speech_atts = salmonn_preprocessor.prompt_wrap(speech_embeds, speech_atts, templated_prompts, multi_prompt=True)
-        bos = torch.ones(
-            [batch_size, 1],
-            dtype=torch.int32,
-            device=speech_embeds.device,
-        ) * tokenizer.bos_token_id
+            speech_embeds, speech_atts = salmonn_preprocessor.prompt_wrap(speech_embeds, speech_atts, templated_prompts, multi_prompt=True)
+            bos = torch.ones(
+                [batch_size, 1],
+                dtype=torch.int32,
+                device=speech_embeds.device,
+            ) * tokenizer.bos_token_id
 
-        bos_embeds = llama_model.model.model.embed_tokens(bos)
-        atts_bos = speech_atts[:, :1]
+            bos_embeds = llama_model.model.model.embed_tokens(bos)
+            atts_bos = speech_atts[:, :1]
 
-        embeds = torch.cat([bos_embeds, speech_embeds], dim=1)
-        attns = torch.cat([atts_bos, speech_atts], dim=1)
+            embeds = torch.cat([bos_embeds, speech_embeds], dim=1)
+            attns = torch.cat([atts_bos, speech_atts], dim=1)
 
-        generate_cfg = cfg.config.generate
+            generate_cfg = cfg.config.generate
 
-        # Generation
-        outputs = llama_model.model.generate(
-            inputs_embeds=embeds,
-            pad_token_id=llama_model.config.eos_token_id[0],
-            max_new_tokens=generate_cfg.get("max_new_tokens", 200),
-            num_beams=generate_cfg.get("num_beams", 4),
-            do_sample=generate_cfg.get("do_sample", False),
-            min_length=generate_cfg.get("min_length", 1),
-            temperature=generate_cfg.get("temperature", 1.0),
-            top_p=generate_cfg.get("top_p", 0.9),
-            repetition_penalty=generate_cfg.get("repetition_penalty", 1.0),
-            length_penalty=generate_cfg.get("length_penalty", 1.0),
-            attention_mask=attns,
-        )
+            # Generation
+            outputs = llama_model.model.generate(
+                inputs_embeds=embeds,
+                pad_token_id=llama_model.config.eos_token_id[0],
+                max_new_tokens=generate_cfg.get("max_new_tokens", 200),
+                num_beams=generate_cfg.get("num_beams", 4),
+                do_sample=generate_cfg.get("do_sample", False),
+                min_length=generate_cfg.get("min_length", 1),
+                temperature=generate_cfg.get("temperature", 1.0),
+                top_p=generate_cfg.get("top_p", 0.9),
+                repetition_penalty=generate_cfg.get("repetition_penalty", 1.0),
+                length_penalty=generate_cfg.get("length_penalty", 1.0),
+                attention_mask=attns,
+            )
 
-        results = tokenizer.batch_decode(outputs)
-        hyp = [result.split(generate_cfg.end_sym)[0].lower() for result in results]
-        hyps.extend(hyp)
+            results = tokenizer.batch_decode(outputs)
+            hyp = [result.split(generate_cfg.end_sym)[0].lower() for result in results]
+            hyps.extend(hyp)
 
-        if not args.make_submission:
-            ref = samples["text"]
-            refs.extend(ref)
+            if not args.make_submission:
+                ref = samples["text"]
+                refs.extend(ref)
 
-    if args.make_submission:
-        os.makedirs("submission_results", exist_ok=True)
-        file_name = f"submission_results/{time.strftime('%Y-%m-%d_%H-%M-%S')}_{args.mode}.csv"
-    else:
-        if args.task == 'asr':
-            compute_wer(hyps, refs)
-            
-        elif args.task == 'aac':
-            compute_spider(hyps, refs)
-        os.makedirs("valid_results", exist_ok=True)
-        file_name = f"valid_results/{time.strftime('%Y-%m-%d_%H-%M-%S')}_{args.mode}.csv"
+        if args.make_submission:
+            os.makedirs("submission_results", exist_ok=True)
+            file_name = f"submission_results/{time.strftime('%Y-%m-%d_%H-%M-%S')}_{args.mode}.csv"
+        else:
+            if args.task == 'asr':
+                compute_wer(hyps, refs)
+                
+            elif args.task == 'aac':
+                compute_spider(hyps, refs)
+            os.makedirs("valid_results", exist_ok=True)
+            file_name = f"valid_results/{time.strftime('%Y-%m-%d_%H-%M-%S')}_{args.mode}.csv"
 
 
-    result_df = pd.DataFrame({"testset_id": testset_ids, "text": hyps})
-    result_df.to_csv(file_name, index=False)
+        result_df = pd.DataFrame({"testset_id": testset_ids, "text": hyps})
+        result_df.to_csv(file_name, index=False)
 
 
 if __name__ == '__main__':
