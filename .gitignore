@@ -7,3 +7,4 @@ nohup.out
 /wandb
 /checkpoints
 /submission_results
+.env
