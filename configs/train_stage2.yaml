@@ -20,7 +20,7 @@ model:
 
   token: "<hf_token>"  # Use hf token to access gated repositories
 
-  ckpt: "/data/yh/level4-cv-finalproject-hackathon-cv-18-lv3/outputs_stage1_only/202501181852/checkpoint_best.pth" # you may put stage1 checkpoint .pth path in here
+  ckpt: "outputs_stage1_only/202501181852/checkpoint_best.pth" # you may put stage1 checkpoint .pth path in here
 
   freeze_whisper: True
   freeze_beats: True
@@ -44,8 +44,8 @@ model:
 
   multi_prompt: True
   prompt_template: "USER: {}\nASSISTANT:"
-  prompt_path: "/data/yh/level4-cv-finalproject-hackathon-cv-18-lv3/data/prompts/train_prompt.json"
-  test_prompt_path: "/data/yh/level4-cv-finalproject-hackathon-cv-18-lv3/data/prompts/test_prompt.json"
+  prompt_path: "data/prompts/train_prompt.json"
+  test_prompt_path: "data/prompts/test_prompt.json"
   max_txt_len: 300
   end_sym: "</s>"
 

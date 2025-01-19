@@ -14,9 +14,9 @@
 
 model:
   # paths
-  llama_path: "meta-llama/Llama-3.2-3B-Instruct"
-  whisper_path: "openai/whisper-large-v2"
-  beats_path: "level4-cv-finalproject-hackathon-cv-18-lv3/checkpoints/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
+  llama_path: "data/ckp/llama"
+  whisper_path: "/data/ckp/whisper"
+  beats_path: "/data/ckp/beats/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
 
   token: "<hf_token>"  # Use hf token to access gated repositories
 

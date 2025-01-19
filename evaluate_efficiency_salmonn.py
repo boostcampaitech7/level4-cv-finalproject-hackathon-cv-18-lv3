@@ -178,7 +178,7 @@ def main(args):
     salmonn_preprocessor.llama_model = llama_model
 
     # Load dataset
-    with open("/data/yh/level4-cv-finalproject-hackathon-cv-18-lv3/data/prompts/test_prompt.json", "r") as f:
+    with open("data/prompts/test_prompt.json", "r") as f:
         test_prompt = json.load(f)
     dataloader = MockDataset.make_mock_dataloader(cfg, sr=16000, audio_length=10)
     sample_batch = next(iter(dataloader))

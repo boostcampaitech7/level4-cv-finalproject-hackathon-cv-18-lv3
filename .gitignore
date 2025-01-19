@@ -1,7 +1,7 @@
 __pycache__
 *.pyc
 .vscode
-.out
+nohup.out
 /outputs_stage1_only
 /outputs_stage2
 /wandb

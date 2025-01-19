@@ -17,11 +17,11 @@ model:
   # initialize with original llama, whisper, beats and
   # re-load updated weights from `ckpt`
   
-  llama_path: "meta-llama/Llama-3.2-3B-Instruct"
-  whisper_path: "openai/whisper-large-v2"
-  beats_path: "level4-cv-finalproject-hackathon-cv-18-lv3/checkpoints/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
+  llama_path: "data/ckp/llama"
+  whisper_path: "/data/ckp/whisper"
+  beats_path: "/data/ckp/beats/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
 
-  ckpt: "level4-cv-finalproject-hackathon-cv-18-lv3/checkpoints/salmonn_3b_nota.pth" # model used for decoding
+  ckpt: "/data/ckp/salmonn/salmonn_3b_nota.pth" # model used for decoding
 
   freeze_whisper: True
   freeze_beats: True
@@ -34,7 +34,7 @@ model:
   second_per_window: 0.333333
   second_stride: 0.333333
 
-  speech_llama_proj_model: "level4-cv-finalproject-hackathon-cv-18-lv3/checkpoints/salmonn_3b_nota.pth"
+  speech_llama_proj_model: "/data/ckp/salmonn/salmonn_3b_nota.pth"
   freeze_speech_llama_proj: True
 
   # LoRA
