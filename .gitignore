@@ -1,7 +1,9 @@
 __pycache__
 *.pyc
 .vscode
+.out
 /outputs_stage1_only
 /outputs_stage2
 /wandb
 /checkpoints
+/submission_results

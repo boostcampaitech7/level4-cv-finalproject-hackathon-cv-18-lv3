@@ -14,7 +14,7 @@ from tensorboardX import SummaryWriter
 import wandb
 
 from utils.dist_utils import main_process, is_dist_avail_and_initialized, is_main_process, get_rank, get_world_size
-from logger import MetricLogger, SmoothedValue
+from utils.logger import MetricLogger, SmoothedValue
 from utils.utils import get_dataloader, prepare_sample
 from optims import get_optimizer, LinearWarmupCosineLRScheduler
 
@@ -69,7 +69,7 @@ class Runner:
         # dataloaders
         self.train_loader = get_dataloader(datasets["train"], self.config.config.run, is_train=True, use_distributed=self.use_distributed)
         self.valid_loader = get_dataloader(datasets["valid"], self.config.config.run, is_train=False, use_distributed=self.use_distributed)
-        self.test_loader = get_dataloader(datasets["test"], self.config.config.run, is_train=False, use_distributed=self.use_distributed)
+        # self.test_loader = get_dataloader(datasets["test"], self.config.config.run, is_train=False, use_distributed=self.use_distributed)
 
         # scaler
         self.use_amp = self.config.config.run.get("amp", False)

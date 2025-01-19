@@ -1,3 +1,4 @@
+import os
 import sys
 import json
 import torch
@@ -27,7 +28,7 @@ def load_model(salmonn_preprocessor):
 
 
 class SALMONNTestDataset(Dataset):
-    def __init__(self, prefix, ann_path, whisper_path, task=None):
+    def __init__(self, prefix, ann_path, whisper_path, task=None, submission=False):
         super().__init__()
 
         self.prefix = prefix
@@ -37,6 +38,8 @@ class SALMONNTestDataset(Dataset):
         self.wav_processor = WhisperFeatureExtractor.from_pretrained(whisper_path)
 
         self.task = task
+
+        self.submission = submission
 
     def __len__(self):
         return len(self.annotation)
@@ -65,19 +68,21 @@ class SALMONNTestDataset(Dataset):
             "id": id,
         }
 
-        if self.task is not None:
+        # if self.task is not None:
+        #     entity['text'] = [s["text"] for s in samples]
+        if not(self.submission):
             entity['text'] = [s["text"] for s in samples]
 
         return entity
 
     def __getitem__(self, index):
         ann = self.annotation[index]
-        audio_path = self.prefix + '/' + ann["path"]
+        audio_path = os.path.join(self.prefix, ann["path"])
         try:
             audio, sr = sf.read(audio_path)
         except:
             print(f"Failed to load {audio_path}. Load 0-th sample for now")
-            audio, sr = sf.read(self.prefix + '/' + self.annotation[0]["path"])
+            audio, sr = sf.read(os.path.join(self.prefix, self.annotation[0]["path"]))
         
         if len(audio.shape) == 2: # stereo to mono
             audio = audio[:, 0]
@@ -106,7 +111,10 @@ class SALMONNTestDataset(Dataset):
             "id": ann["path"],
         }
 
-        if self.task is not None:
+        # if self.task is not None:
+        #     entity['text'] = ann['text']
+
+        if not(self.submission):
             entity['text'] = ann['text']
 
         return entity

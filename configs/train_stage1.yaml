@@ -12,15 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 model:
   # paths
-  llama_path: "meta-llama/Llama-3.2-3B-Instruct"
-  whisper_path: "openai/whisper-large-v2"
-  beats_path: "level4-cv-finalproject-hackathon-cv-18-lv3/checkpoints/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
+  llama_path: "/data/ckp/llama"
+  whisper_path: "/data/ckp/whisper"
+  beats_path: "/data/ckp/beats/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
 
   token: "<hf_token>"  # Use hf token to access gated repositories
   
-  ckpt: "" #"model ckpt" # if not "", load model from ckpt for training or evaluation
+  ckpt: "/data/ckp/salmonn/salmonn_3b_nota.pth" #"model ckpt" # if not "", load model from ckpt for training or evaluation
 
   freeze_whisper: True
   freeze_beats: True
@@ -44,19 +45,19 @@ model:
 
   multi_prompt: True
   prompt_template: "USER: {}\nASSISTANT:"
-  prompt_path: "data/prompts/train_prompt.json"
-  test_prompt_path: "data/prompts/test_prompt.json"
+  prompt_path: "/data/yh/level4-cv-finalproject-hackathon-cv-18-lv3/data/prompts/train_prompt.json"
+  test_prompt_path: "/data/yh/level4-cv-finalproject-hackathon-cv-18-lv3/data/prompts/test_prompt.json"
   max_txt_len: 300
-  end_sym: "<|end_of_text|>"   # TODO: change eos token
+  end_sym: "</s>"   # TODO: change eos token
 
 datasets:
-  prefix: "/root/base_data/audios_salmonn_1%_sampled"
+  prefix: "/data/data"
   
-  train_ann_path: "data/stage1_train.json"
-  valid_ann_path: "data/stage1_valid.json"
-  test_ann_path: "data/stage1_test.json"
+  train_ann_path: "/data/data/stage1_train.json"
+  valid_ann_path: "/data/data/stage1_valid.json"
+  test_ann_path: "/data/data/stage1_test.json"
 
-  whisper_path: "openai/whisper-large-v2"
+  whisper_path: "/data/ckp/whisper"
 
 run:
   # log & settings

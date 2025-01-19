@@ -14,14 +14,14 @@
 
 model:
   # paths
-  llama_path: "meta-llama/Llama-3.2-3B-Instruct"
-  whisper_path: "openai/whisper-large-v2"
-  beats_path: "level4-cv-finalproject-hackathon-cv-18-lv3/checkpoints/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
+  llama_path: "/data/ckp/llama"
+  whisper_path: "/data/ckp/whisper"
+  beats_path: "/data/ckp/beats/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
 
-  token: "" # Use hf token to access gated repositories
+  token: "<hf_token>" # Use hf token to access gated repositories
   only_preprocessor: False
 
-  ckpt: "/root/base_data/checkpoints/llama_stage2_ckpt.pth" # model used for decoding
+  ckpt: "/data/yh/level4-cv-finalproject-hackathon-cv-18-lv3/outputs_stage2/202501181940/checkpoint_best.pth" # model used for decoding
 
   freeze_whisper: True
   freeze_beats: True
@@ -45,8 +45,8 @@ model:
 
   multi_prompt: True
   prompt_template: "USER: {}\nASSISTANT:"
-  prompt_path: "data/prompts/train_prompt.json"
-  test_prompt_path: "data/prompts/test_prompt.json"
+  prompt_path: "/data/yh/level4-cv-finalproject-hackathon-cv-18-lv3/data/prompts/train_prompt.json"
+  test_prompt_path: "/data/yh/level4-cv-finalproject-hackathon-cv-18-lv3/data/prompts/test_prompt.json"
   max_txt_len: 300
   end_sym: "<|end_of_text|>"
 
@@ -63,8 +63,10 @@ generate:
 
 datasets:
   prefix: "/data/data"
-  test_ann_path: "/data/data/test_asr.json"
-  whisper_path: "openai/whisper-large-v2"
+  # test_ann_path: "data/test_aac.json" # (deprecated next update)
+  test_ann_path_asr: "/data/data/test_asr.json"
+  test_ann_path_aac: "/data/data/test_aac.json"
+  whisper_path: "/data/ckp/whisper"
 
 run:
   batch_size_eval: 8

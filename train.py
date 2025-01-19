@@ -21,7 +21,7 @@ import torch
 import torch.backends.cudnn as cudnn
 import wandb
 
-from utils import *
+from utils.utils import *
 from config import Config
 from utils.dist_utils import get_rank, init_distributed_mode
 from models import load_model
@@ -84,7 +84,7 @@ def main():
     datasets = {
         "train": SALMONNDataset(data_config.prefix, data_config.train_ann_path, data_config.whisper_path),
         "valid": SALMONNDataset(data_config.prefix, data_config.valid_ann_path, data_config.whisper_path),
-        "test": SALMONNDataset(data_config.prefix, data_config.test_ann_path, data_config.whisper_path),
+        # "test": SALMONNDataset(data_config.prefix, data_config.test_ann_path, data_config.whisper_path),
     }
 
     # build model
