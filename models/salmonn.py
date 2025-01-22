@@ -16,6 +16,8 @@ import logging
 import json
 import contextlib
 import random
+import sys
+import time
 
 import torch
 import torch.nn as nn
@@ -273,10 +275,25 @@ class SALMONN(nn.Module):
 
     def encode_speech(self, spectrogram, raw_wav=None, audio_padding_mask=None):
         with self.maybe_autocast():
+            # time check for encoders
+            # whisper time and memory check
+            start_time = time.time()
             speech_embeds = self.speech_encoder(spectrogram, return_dict=True).last_hidden_state
-
+            end_time = time.time()
+            print(f"whispers time taken : {end_time - start_time}")
+            
+            model_size = sum(p.numel() for p in self.speech_encoder.parameters()) * 4
+            print(f"whispers size {model_size}")
+            
             if self.beats_path and raw_wav is not None:
+                # beat time and memory check
+                start_time = time.time()
                 audio_embeds, _ = self.beats.extract_features(raw_wav, padding_mask=audio_padding_mask, feature_only=True)
+                end_time = time.time()
+                print(f"beats time taken : {end_time - start_time}")
+                
+                model_size = sum(p.numel() for p in self.beats.parameters()) * 4
+                print(f"beats size {model_size}")
             else:
                 audio_embeds = None
                         
