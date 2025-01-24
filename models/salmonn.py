@@ -259,15 +259,15 @@ class SALMONN(nn.Module):
                 query_tokens = self.speech_query_tokens.expand(speech_embeds.shape[0], -1, -1)
                 # Qformer 동작 부분
                 # speech-QFormer check
-                start_time = time.time()
+                # start_time = time.time()
                 query_output = self.speech_Qformer.bert(
                     query_embeds=query_tokens,
                     encoder_hidden_states=speech_embeds,
                     encoder_attention_mask=speech_atts,
                     return_dict=True,
                 )
-                end_time = time.time()
-                print(f"Qformer time taken : {end_time - start_time}s")
+                # end_time = time.time()
+                # print(f"Qformer time taken : {end_time - start_time}s")
                 
                 # speech-QFormer check end
                 
@@ -280,37 +280,37 @@ class SALMONN(nn.Module):
             else:
                 raise NotImplementedError
 
-        et = time.time()
-        print(f"total time for QFormer to output speech embeds : {et - st}")
-        model_size = sum(p.numel() for p in self.speech_Qformer.parameters()) * 4
-        print(f"Qformer params : {model_size}")
-        print(f"Qformer size: {model_size / (1024 ** 2):.2f} MB")
+        # et = time.time()
+        # print(f"total time for QFormer to output speech embeds : {et - st}")
+        # model_size = sum(p.numel() for p in self.speech_Qformer.parameters()) * 4
+        # print(f"Qformer params : {model_size}")
+        # print(f"Qformer size: {model_size / (1024 ** 2):.2f} MB")
         return speech_embeds, speech_atts
 
     def encode_speech(self, spectrogram, raw_wav=None, audio_padding_mask=None):
         with self.maybe_autocast():
             # time check for encoders
             # whisper efficiency check
-            start_time = time.time()
+            # start_time = time.time()
             speech_embeds = self.speech_encoder(spectrogram, return_dict=True).last_hidden_state
-            end_time = time.time()
-            print(f"whispers time taken : {end_time - start_time}s")
+            # end_time = time.time()
+            # print(f"whispers time taken : {end_time - start_time}s")
             
-            model_size = sum(p.numel() for p in self.speech_encoder.parameters()) * 4
-            print(f"whispers params : {model_size}")
-            print(f"Whispers size: {model_size / (1024 ** 2):.2f} MB")
+            # model_size = sum(p.numel() for p in self.speech_encoder.parameters()) * 4
+            # print(f"whispers params : {model_size}")
+            # print(f"Whispers size: {model_size / (1024 ** 2):.2f} MB")
             # whisper efficiency check end
             
             if self.beats_path and raw_wav is not None:
                 # beat efficiency check
-                start_time = time.time()
+                # start_time = time.time()
                 audio_embeds, _ = self.beats.extract_features(raw_wav, padding_mask=audio_padding_mask, feature_only=True)
-                end_time = time.time()
-                print(f"beats time taken : {end_time - start_time}s")
+                # end_time = time.time()
+                # print(f"beats time taken : {end_time - start_time}s")
                 
-                model_size = sum(p.numel() for p in self.beats.parameters()) * 4
-                print(f"beats params : {model_size}")
-                print(f"beats size : {model_size / (1024 ** 2):.2f} MB")
+                # model_size = sum(p.numel() for p in self.beats.parameters()) * 4
+                # print(f"beats params : {model_size}")
+                # print(f"beats size : {model_size / (1024 ** 2):.2f} MB")
                 # beat efficiency check end
             else:
                 audio_embeds = None
@@ -425,18 +425,18 @@ class SALMONN(nn.Module):
         print(f"LLM input preparation time taken : {end_time - start_time}s")
         # calulate loss
         with self.maybe_autocast():
-            start_time = time.time()
+            # start_time = time.time()
             outputs = self.llama_model(
                 inputs_embeds=inputs_embeds,
                 attention_mask=attention_mask,
                 return_dict=True,
                 labels=targets,
             )
-            end_time = time.time()
-            print(f"LLM to generate ouput time taken : {end_time - start_time}s")
-            model_size = sum(p.numel() for p in self.llama_model.parameters()) * 4
-            print(f"llama params : {model_size}")
-            print(f"llama size : {model_size / (1024 ** 2):.2f} MB")
+            # end_time = time.time()
+            # print(f"LLM to generate ouput time taken : {end_time - start_time}s")
+            # model_size = sum(p.numel() for p in self.llama_model.parameters()) * 4
+            # print(f"llama params : {model_size}")
+            # print(f"llama size : {model_size / (1024 ** 2):.2f} MB")
         
             loss = outputs.loss
 
