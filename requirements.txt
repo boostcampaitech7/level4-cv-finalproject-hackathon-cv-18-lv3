@@ -14,3 +14,4 @@ tensorboardX==2.6.2.2
 editdistance==0.8.1
 sacrebleu==1.5.1
 aac-metrics==0.5.4
+ipykernel
