@@ -231,6 +231,7 @@ class SALMONN(nn.Module):
     def _encode_auditory_feature(self, speech_embeds, audio_embeds=None):
         st = time.time()
         with self.maybe_autocast():
+            start_time = time.time()
             if self.use_speech_Qformer:
                 speech_embeds = self.ln_speech(speech_embeds)
                 if audio_embeds is not None:
@@ -259,7 +260,6 @@ class SALMONN(nn.Module):
                 query_tokens = self.speech_query_tokens.expand(speech_embeds.shape[0], -1, -1)
                 # Qformer 동작 부분
                 # speech-QFormer check
-                start_time = time.time()
                 query_output = self.speech_Qformer.bert(
                     query_embeds=query_tokens,
                     encoder_hidden_states=speech_embeds,
