@@ -20,12 +20,15 @@ from optims import get_optimizer, LinearWarmupCosineLRScheduler
 
 
 class Runner:
-    def __init__(self, cfg, model, datasets, job_id, dryrun):
+    def __init__(self, cfg, model, datasets, job_id, dryrun, pruned = False):
         self.config = cfg
 
         # dryrun (test with dummy model)
         self.dryrun = dryrun
-
+        
+        # pruned (check if model pruned)
+        self.pruned = pruned
+        
         # log
         self.output_dir = Path(self.config.config.run.output_dir) / job_id
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -347,28 +350,39 @@ class Runner:
 
     @main_process
     def save_checkpoint(self, cur_epoch, is_best=False):
-        """
-        Save the checkpoint at the current epoch.
-        """
+
         model_no_ddp = self.unwrap_dist_model(self.model)
-        param_grad_dic = {
-            k: v.requires_grad for (k, v) in model_no_ddp.named_parameters()
-        }
-        state_dict = model_no_ddp.state_dict()
-        for k in list(state_dict.keys()):
-            if k in param_grad_dic.keys() and not param_grad_dic[k]:
-                # delete parameters that do not require gradient
-                del state_dict[k]
-        save_obj = {
-            "model": state_dict,
-            "optimizer": self.optimizer.state_dict(),
-            "config": self.config.to_dict(),
-            "scaler": self.scaler.state_dict() if self.scaler else None,
-            "epoch": cur_epoch,
-        }
+
         save_to = os.path.join(
             self.output_dir,
             "checkpoint_{}.pth".format("best" if is_best else cur_epoch),
         )
-        logging.info("Saving checkpoint at epoch {} to {}.".format(cur_epoch, save_to))
+        logging.info(f"Saving checkpoint at epoch {cur_epoch} to {save_to}.")
+
+        if self.pruned:
+            save_obj = {
+                "model": model_no_ddp, 
+                "optimizer": self.optimizer.state_dict(),
+                "config": self.config.to_dict(),
+                "scaler": self.scaler.state_dict() if self.scaler else None,
+                "epoch": cur_epoch,
+            }
+        else:
+            param_grad_dic = {
+                k: v.requires_grad for (k, v) in model_no_ddp.named_parameters()
+            }
+            state_dict = model_no_ddp.state_dict()
+
+            for k in list(state_dict.keys()):
+                if k in param_grad_dic.keys() and not param_grad_dic[k]:
+                    del state_dict[k]
+
+            save_obj = {
+                "model": state_dict,  
+                "optimizer": self.optimizer.state_dict(),
+                "config": self.config.to_dict(),
+                "scaler": self.scaler.state_dict() if self.scaler else None,
+                "epoch": cur_epoch,
+            }
+
         torch.save(save_obj, save_to)

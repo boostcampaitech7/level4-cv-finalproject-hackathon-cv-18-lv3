@@ -32,7 +32,7 @@ def parse_args():
         "change to --cfg-options instead.",
     )
     parser.add_argument("--dryrun", action='store_true', help='if True, use dummy model and skip forward/backward')
-
+    parser.add_argument("--not_prune", action='store_False')
     return parser.parse_args()
 
 
@@ -72,12 +72,12 @@ def main():
     cfg.pretty_print()
 
     # build datasets
-    #datasets = {
-    #    "train": SALMONNDataset(data_config.prefix, data_config.train_ann_path, data_config.whisper_path),
-    #    "valid": SALMONNDataset(data_config.prefix, data_config.valid_ann_path, data_config.whisper_path),
+    datasets = {
+        "train": SALMONNDataset(data_config.prefix, data_config.train_ann_path, data_config.whisper_path),
+        "valid": SALMONNDataset(data_config.prefix, data_config.valid_ann_path, data_config.whisper_path),
         # "test": SALMONNDataset(data_config.prefix, data_config.test_ann_path, data_config.whisper_path),
-    #}
-    #calib_samples = [datasets["train"][i] for i in range(10)]
+    }
+    calib_samples = [datasets["train"][i] for i in range(10)]
     # build model
     if not args.dryrun:
         model = load_model(model_config)
@@ -94,7 +94,7 @@ def main():
         "attention_mask": inputs["attention_mask"],
     }
     
-    llama_module = model.model
+    llama_module = model.llama_model
     
     kwargs = {
         "importance": hf_llama_pruner.TaylorImportance(group_reduction="sum", taylor="param_first"),
@@ -117,7 +117,8 @@ def main():
         model=llama_module,         
         example_inputs=example_inputs,
         **kwargs
-    )                                                                                                                                     
+    )      
+                                                                                                                               
     llama_module.train()  
     outputs = llama_module(**example_inputs, labels=example_inputs["input_ids"])
     loss = outputs.loss
@@ -126,7 +127,7 @@ def main():
     pruner.step()
     
     # build runner
-    #runner = Runner(cfg, model, datasets, job_id, args.dryrun)
+    #runner = Runner(cfg, model, datasets, job_id, args.dryrun, args.not_prune)
     remaining_params = sum(p.numel() for p in llama_module.parameters() if p.requires_grad)
     print(f"Remaining params after pruning: {remaining_params}")
     # train
