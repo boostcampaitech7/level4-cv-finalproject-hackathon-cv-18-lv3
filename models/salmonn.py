@@ -93,6 +93,7 @@ class SALMONN(nn.Module):
         device_8bit=0,  # the device of 8bit model should be set when loading and cannot be changed anymore.
         token=None,
         only_preprocessor=None,
+        pruned = False
     ):
         super().__init__()
 
@@ -106,6 +107,7 @@ class SALMONN(nn.Module):
         self.max_txt_len = max_txt_len
         self.end_sym = end_sym
         self.low_resource = low_resource
+        self.pruned = pruned
 
         logging.info('Loading LLaMA Tokenizer')
         self.llama_tokenizer = AutoTokenizer.from_pretrained(llama_path, use_fast=False, token=token)
@@ -114,19 +116,25 @@ class SALMONN(nn.Module):
 
         if not only_preprocessor:
             logging.info('Loading LLaMA Model')
-            if self.low_resource:
-                self.llama_model = AutoModelForCausalLM.from_pretrained(
+            if self.pruned:
+                self.llama_model = torch.load(
                     llama_path,
                     torch_dtype=torch.float16,
-                    load_in_8bit=True,
-                    device_map={"": device_8bit},
-                    token=token,
                 )
             else:
-                self.llama_model = AutoModelForCausalLM.from_pretrained(
-                    llama_path,
-                    torch_dtype=torch.float16,
-                    token=token,
+                if self.low_resource:
+                    self.llama_model = AutoModelForCausalLM.from_pretrained(
+                        llama_path,
+                        torch_dtype=torch.float16,
+                        load_in_8bit=True,
+                        device_map={"": device_8bit},
+                        token=token,
+                    )
+                else:
+                    self.llama_model = AutoModelForCausalLM.from_pretrained(
+                        llama_path,
+                        torch_dtype=torch.float16,
+                        token=token,
                 )
 
             self.llama_model.resize_token_embeddings(len(self.llama_tokenizer))
@@ -482,6 +490,7 @@ class SALMONN(nn.Module):
         device_8bit = config.get("device_8bit", 0)
 
         token = config.get("token", None)
+        pruned = config.get("pruned", False)
         only_preprocessor = config.get("only_preprocessor", None)
 
         model = cls(
@@ -511,6 +520,7 @@ class SALMONN(nn.Module):
             device_8bit=device_8bit,
             token=token,
             only_preprocessor=only_preprocessor,
+            pruned = pruned
         )
 
         ckpt_path = config.get("ckpt", "")

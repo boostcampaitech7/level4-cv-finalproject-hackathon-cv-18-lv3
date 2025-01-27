@@ -352,7 +352,7 @@ class Runner:
     def save_checkpoint(self, cur_epoch, is_best=False):
 
         model_no_ddp = self.unwrap_dist_model(self.model)
-
+        self.config['pruned'] = self.pruned
         save_to = os.path.join(
             self.output_dir,
             "checkpoint_{}.pth".format("best" if is_best else cur_epoch),
