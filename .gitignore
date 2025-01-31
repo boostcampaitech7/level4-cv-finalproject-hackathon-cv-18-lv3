@@ -8,3 +8,4 @@ nohup.out
 /checkpoints
 /submission_results
 .env
+nohup*.out
