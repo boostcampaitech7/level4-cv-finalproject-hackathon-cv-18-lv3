@@ -19,12 +19,13 @@ model:
   whisper_path: "/data/ckp/whisper"
   beats_path: "/data/ckp/beats/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
 
-  token: "<hf_token>"  # Use hf token to access gated repositories
+  token: ""  # Use hf token to access gated repositories
   
-  ckpt: "/data/ckp/salmonn/salmonn_3b_nota.pth" #"model ckpt" # if not "", load model from ckpt for training or evaluation
+  ckpt: "" #"model ckpt" # if not "", load model from ckpt for training or evaluation
 
   freeze_whisper: True
   freeze_beats: True
+  deepspeed_config: "/data/minji/level4-cv-finalproject-hackathon-cv-18-lv3/configs/deepspeed_config.json"
 
   # window-level Q-Former
   use_speech_Qformer: True
@@ -65,12 +66,13 @@ run:
   output_dir: "outputs_stage1_only"
   evaluate: False # if True, only evaluate model on test data
   exp_name: "llama-3.2-1B-1percent-stage1"
+  deepspeed: True
 
   log_freq: 5
   epoch_based: False
   iters_per_epoch: 3000
   accum_grad_iters: 1
-  batch_size_train: 8
+  batch_size_train: 16
   batch_size_eval: 8
   num_workers: 8
 

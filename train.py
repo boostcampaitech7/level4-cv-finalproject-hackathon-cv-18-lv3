@@ -29,7 +29,24 @@ from dataset import SALMONNDataset
 from utils.runner import Runner
 
 from dotenv import load_dotenv
+from deepspeed import comm as dist
 
+# def print_submodules(model):
+#     # 먼저 현재 랭크를 구합니다.
+#     rank = dist.get_rank()
+#     file_path = f"./rank_{rank}_submodules.txt"
+
+#     submodule_list = []
+#     for idx, (name, param) in enumerate(model.named_parameters()):
+#         submodule_list.append((idx, name, id(param)))
+
+
+#     # 파일로 기록
+#     with open(file_path, "w") as f:
+#         for idx, name, param in submodule_list:
+#             f.write(f"{idx}\t{name}\t{param}\n")
+
+#     print(f"[*] Rank {rank} submodule list saved to {file_path}")
 
 def parse_args():
     parser = argparse.ArgumentParser(description='train parameters')
@@ -42,6 +59,7 @@ def parse_args():
         "change to --cfg-options instead.",
     )
     parser.add_argument("--dryrun", action='store_true', help='if True, use dummy model and skip forward/backward')
+    parser.add_argument("--local_rank", type=int, help="Local rank. Necessary for using the torch.distributed.launch utility.")
 
     return parser.parse_args()
 
@@ -52,6 +70,7 @@ def setup_seeds(config):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
     cudnn.benchmark = False
     cudnn.deterministic = True
@@ -96,11 +115,12 @@ def main():
 
     # build model
     if not args.dryrun:
-        model = load_model(model_config)
+        model = load_model(model_config, run_config)
     else: # load small dummy language model
         from transformers import AutoModelForCausalLM
         model = AutoModelForCausalLM.from_pretrained("apple/OpenELM-270M-Instruct", trust_remote_code=True)
-
+  
+    # print_submodules(model)
     # build runner
     runner = Runner(cfg, model, datasets, job_id, args.dryrun)
 

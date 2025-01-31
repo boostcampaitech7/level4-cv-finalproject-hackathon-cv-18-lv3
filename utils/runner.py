@@ -18,10 +18,13 @@ from utils.logger import MetricLogger, SmoothedValue
 from utils.utils import get_dataloader, prepare_sample
 from optims import get_optimizer, LinearWarmupCosineLRScheduler
 
+import deepspeed 
+
 
 class Runner:
     def __init__(self, cfg, model, datasets, job_id, dryrun):
         self.config = cfg
+        # self.deepspeed_config = self.config.config.model.get("deepspeed_config", None)
 
         # dryrun (test with dummy model)
         self.dryrun = dryrun
@@ -58,14 +61,27 @@ class Runner:
 
         # model
         self._model = model
+        # self.optimizer = None
+        
+        # # DeepSpeed init
+        # if self.config.config.run.deepspeed:
+        #     model, optimizer, _, _ = deepspeed.initialize(
+        #         model=self._model,
+        #         optimizer=self.optimizer,
+        #         args=self.config.config.model.deepspeed_config,
+        #         model_parameters=self._model.parameters(),
+        #     )
+        # else:
+        #     self.optimizer = get_optimizer(self._model, self.config.config.run.optims)
+        
         self._model.to(self.device)
-        if self.use_distributed:
-            self.model = DDP(
-                self._model, device_ids=[self.config.config.run.gpu]
-            )
-        else:
-            self.model = self._model
-
+        # if self.use_distributed:
+        #     self.model = DDP(
+        #         self._model, device_ids=[self.config.config.run.gpu]
+        #     )
+        # else:
+        #     self.model = self._model
+        self.model = model
         # dataloaders
         self.train_loader = get_dataloader(datasets["train"], self.config.config.run, is_train=True, use_distributed=self.use_distributed)
         self.valid_loader = get_dataloader(datasets["valid"], self.config.config.run, is_train=False, use_distributed=self.use_distributed)
@@ -101,7 +117,7 @@ class Runner:
 
     def train_epoch(self, epoch):
         self.model.train()
-
+        
         metric_logger = MetricLogger(delimiter="  ")
         metric_logger.add_meter("lr", SmoothedValue(window_size=1, fmt="{value:.6f}"))
         metric_logger.add_meter("loss", SmoothedValue(window_size=1, fmt="{value:.4f}"))
@@ -123,20 +139,22 @@ class Runner:
             if not self.dryrun:
                 self.scheduler.step(cur_epoch=epoch, cur_step=i)
 
-                with torch.cuda.amp.autocast(enabled=self.use_amp):
+                with torch.amp.autocast('cuda', enabled=self.use_amp):
                     loss = self.model(samples)["loss"]
 
                 if self.use_amp:
-                    self.scaler.scale(loss).backward()
+                    # self.scaler.scale(loss).backward()
+                    self.model.backward(loss)
                 else:
                     loss.backward()
 
                 if (i + 1) % self.config.config.run.accum_grad_iters == 0:
                     if self.use_amp:
-                        self.scaler.step(self.optimizer)
-                        self.scaler.update()
+                        # self.scaler.step(self.optimizer)
+                        self.model.step()
+                        # self.scaler.update()
                     else:
-                        self.optimizer.step()
+                        self.model.step()
                     self.optimizer.zero_grad()
 
                 metric_logger.update(loss=loss.item())
@@ -360,7 +378,7 @@ class Runner:
                 # delete parameters that do not require gradient
                 del state_dict[k]
         save_obj = {
-            "model": state_dict,
+            "model": model_no_ddp.state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "config": self.config.to_dict(),
             "scaler": self.scaler.state_dict() if self.scaler else None,
