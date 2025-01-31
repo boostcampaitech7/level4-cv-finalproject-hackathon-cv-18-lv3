@@ -16,3 +16,7 @@ sacrebleu==1.5.1
 aac-metrics==0.5.4
 python-dotenv
 ipykernel
+seaborn
+datashader
+umap-learn
+
