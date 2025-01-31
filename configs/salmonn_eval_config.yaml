@@ -21,7 +21,7 @@ model:
   token: "<hf_token>" # Use hf token to access gated repositories
   only_preprocessor: False
 
-  ckpt: "outputs_stage2/202501181940/checkpoint_best.pth" # model used for decoding
+  ckpt: "outputs_stage2/checkpoint_best.pth" # model used for decoding
 
   freeze_whisper: True
   freeze_beats: True
