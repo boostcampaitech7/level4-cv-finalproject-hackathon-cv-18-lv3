@@ -45,22 +45,16 @@ def parse_args():
         "change to --cfg-options instead.",
     )
     # --- Deprecated options ---
-    parser.add_argument("--task", type=str, default=None, 
-                    help="(Deprecate) Task to evaluate. Use --mode instead. This option will be removed in a future version.", 
-                    choices=['asr', 'aac'])
 
     parser.add_argument("--skip_scoring", action='store_false', default=True, 
                     help="(Deprecate) If True, skip scoring after inference. Use --mode instead. This option will be removed in a future version.")
     # --- Deprecated options end ---
     # --- New options ---
-    parser.add_argument("--mode", type=str, default="valid_aac", 
+    parser.add_argument("--mode", type=str, default="submission", 
                     help="Mode to evaluate. Supports submission and validation modes for ASR and AAC tasks.", 
-                    choices=['submission_asr', 'submission_aac', 'submission_asr_aac', 'submission_aac_asr',
-                             'valid_asr', 'valid_aac', 'valid_asr_aac', 'valid_aac_asr',
-                             'submission_latency','submission_asr_latency', 'submission_aac_latency',
-                             'submission_latency_asr', 'submission_latency_aac', 'submission_latency_asr_aac',
-                             'submission_latency_aac_asr', 'submission_asr_aac_latency', 'submission_aac_asr_latency',
-                             'submission_asr_latency_aac', 'submission_aac_latency_asr'])
+                    choices=['submission','valid']) 
+    
+    parser.add_argument('--tasks', nargs='+', help='arc aac latency')
     # --- New options end ---
     
     parser.add_argument("--num_it", type=int, default=100)
@@ -68,32 +62,13 @@ def parse_args():
 
     args = parser.parse_args()
 
-    if args.mode is None:
-        # --- For Previous Version ---
-        if args.task is None:
-            raise ValueError("Either --task or --mode must be provided")
-        args.mode = convert_task_to_mode(args.task, args.skip_scoring)
+    if args.tasks is None:
+        raise ValueError("--task must be provided")
 
     # --- Override Previous Version Args ---
-    args.tasks = args.mode.split("_")[1:]
-    args.task = args.mode.split("_")[1]
-    args.make_submission = args.mode.split("_")[0] == "submission"
+    args.make_submission = args.mode
 
     return args
-
-def convert_task_to_mode(task, skip_scoring):
-    if skip_scoring:
-        if task == 'asr':
-            return 'submission_asr'
-        elif task == 'aac':
-            return 'submission_aac'
-    else:
-        if task == 'asr':       
-            return 'valid_asr'
-        elif task == 'aac':
-            return 'valid_aac'
-    
-    raise ValueError(f"Invalid task: {task} | {skip_scoring}")
 
 def get_dataset(dataset_cfg, run_cfg, task, submission):
     testset = SALMONNTestDataset(
@@ -235,6 +210,8 @@ def main(args):
     # 기존 입력
     # python evaluate_salmonn.py --mode submission_asr
     # submission_asr, submission_aac, valid_asr, valid_aac
+    # 변경
+    # pythone eval.py --mode submission --tasks asr aac latency
 
     cfg = Config(args)
     # cfg = replace_test_ann_path(cfg) # asr, aac에 따라 .yaml에 설정되어 있는 경로를
@@ -382,7 +359,7 @@ def main(args):
             print(f"Average TTFT: {average_ttft:.4f} seconds")
             print(f"Average TPOT: {average_tpot:.4f} seconds")
                     
-        print(f"{task} evaluation start")
+        print(f"{task} evaluation end")
 
 
 if __name__ == '__main__':
