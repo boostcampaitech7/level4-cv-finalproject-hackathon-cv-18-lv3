@@ -23,6 +23,8 @@ import torch.nn.functional as F
 from transformers import StoppingCriteriaList, AutoTokenizer, AutoModelForCausalLM, AutoConfig
 from peft import LoraConfig, TaskType, get_peft_model
 
+import os
+
 from .Qformer import BertConfig, BertLMHeadModel
 from .modeling_llama import LlamaForCausalLM
 from .modeling_whisper import WhisperModel
@@ -93,7 +95,8 @@ class SALMONN(nn.Module):
         device_8bit=0,  # the device of 8bit model should be set when loading and cannot be changed anymore.
         token=None,
         only_preprocessor=None,
-        pruned = False
+        pruned = False,
+        pruned_path = ""
     ):
         super().__init__()
 
@@ -108,6 +111,7 @@ class SALMONN(nn.Module):
         self.end_sym = end_sym
         self.low_resource = low_resource
         self.pruned = pruned
+        self.pruned_path = pruned_path
 
         logging.info('Loading LLaMA Tokenizer')
         self.llama_tokenizer = AutoTokenizer.from_pretrained(llama_path, use_fast=False, token=token)
@@ -117,9 +121,9 @@ class SALMONN(nn.Module):
         if not only_preprocessor:
             logging.info('Loading LLaMA Model')
             if self.pruned:
+                print(f'loading pruned model from {pruned_path}')
                 self.llama_model = torch.load(
-                    llama_path,
-                    torch_dtype=torch.float16,
+                    os.path.join(pruned_path,'model.pt'),
                 )
             else:
                 if self.low_resource:
@@ -491,6 +495,7 @@ class SALMONN(nn.Module):
 
         token = config.get("token", None)
         pruned = config.get("pruned", False)
+        pruned_path = config.get("pruned_path","")
         only_preprocessor = config.get("only_preprocessor", None)
 
         model = cls(
@@ -520,7 +525,8 @@ class SALMONN(nn.Module):
             device_8bit=device_8bit,
             token=token,
             only_preprocessor=only_preprocessor,
-            pruned = pruned
+            pruned = pruned,
+            pruned_path = pruned_path
         )
 
         ckpt_path = config.get("ckpt", "")
