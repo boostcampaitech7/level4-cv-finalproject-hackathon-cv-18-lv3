@@ -649,6 +649,10 @@ class EvaluationTokenizer(object):
 
 
 def compute_wer(hyps, refs) -> float:
+    if len(hyps) != len(refs) or not hyps or not refs:
+        print("Warning: Mismatched or empty input. Returning wer=1.0")
+        return 1.0
+    
     normalizer = EnglishTextNormalizer()
 
     norm_refs = [normalizer(ref) for ref in refs]
@@ -671,6 +675,10 @@ def compute_wer(hyps, refs) -> float:
         distance += ed.eval(ref_items, pred_items)
         ref_length += len(ref_items)
     
+    if ref_length == 0:
+        print("Warning: ref_length=0. Returning wer=1.0")
+        return 1.0
+
     wer = distance / ref_length
 
     print(f"WER: {wer*100:0.4f}%")

@@ -16,19 +16,19 @@ import logging
 import json
 import contextlib
 import random
+import os
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import StoppingCriteriaList, AutoTokenizer, AutoModelForCausalLM, AutoConfig
-from peft import LoraConfig, TaskType, get_peft_model
 
 from .Qformer import BertConfig, BertLMHeadModel
 from .modeling_llama import LlamaForCausalLM
 from .modeling_whisper import WhisperModel
 from .beats.BEATs import BEATsConfig, BEATs
 from .utils import StoppingCriteriaSub
-
+from utils.svd_utils import SVDLinear
 
 class SALMONN(nn.Module):
     @classmethod
@@ -79,10 +79,8 @@ class SALMONN(nn.Module):
         speech_llama_proj_model="",
         freeze_speech_llama_proj=False,
 
-        lora=True,
-        lora_rank=8,
-        lora_alpha=32,
-        lora_dropout=0.1,
+        use_svf = True,
+        svf_rank = 8,
 
         multi_prompt=False,
         prompt_path="",
@@ -101,11 +99,13 @@ class SALMONN(nn.Module):
         self.window_level_Qformer = window_level_Qformer
         self.second_per_window = second_per_window
         self.second_stride = second_stride
-        self.lora = lora
         self.multi_prompt = multi_prompt
         self.max_txt_len = max_txt_len
         self.end_sym = end_sym
         self.low_resource = low_resource
+        self.use_svf = use_svf
+        self.svf_rank = svf_rank
+        self.z_vectors = nn.ParameterDict()
 
         logging.info('Loading LLaMA Tokenizer')
         self.llama_tokenizer = AutoTokenizer.from_pretrained(llama_path, use_fast=False, token=token)
@@ -134,17 +134,35 @@ class SALMONN(nn.Module):
                 param.requires_grad = False
             logging.info('Loading LLaMA Done')
 
-            if self.lora:
-                self.peft_config = LoraConfig(
-                    task_type=TaskType.CAUSAL_LM, 
-                    inference_mode=False, 
-                    r=lora_rank, 
-                    lora_alpha=lora_alpha, 
-                    lora_dropout=lora_dropout,
-                )
-                self.llama_model = get_peft_model(self.llama_model, self.peft_config)
-                self.llama_model.print_trainable_parameters()
-                logging.info('LoRA Training')
+            if self.use_svf:
+                logging.info('SVD Start')
+                self.z_vectors = nn.ParameterDict()
+
+                for idx, layer in enumerate(self.llama_model.model.layers):
+                    target_weight = layer.mlp.down_proj.weight
+                    out_dim, in_dim = layer.mlp.down_proj.weight.shape
+                    # SVD
+                    U, S, Vt = torch.linalg.svd(target_weight.data.to(device=target_weight.device, dtype=torch.float32))
+                    # 경량화 : 상위 svf_rank개의 특이값만 사용
+                    U_approx = U[:, :svf_rank]
+                    S_approx = S[:svf_rank]
+                    Vt_approx = Vt[:svf_rank, :]
+                    
+                    self.register_buffer(f"downproj_U_{idx}", U_approx)
+                    self.register_buffer(f"downproj_S_{idx}", S_approx)
+                    self.register_buffer(f"downproj_Vt_{idx}", Vt_approx)
+                    
+                    z_param = nn.Parameter(torch.ones_like(S_approx))
+                    self.z_vectors[f"z_vector_{idx}"] = z_param
+
+                    svd_down_proj = SVDLinear(U_approx, S_approx, Vt_approx,
+                                                z_param, out_dim, in_dim,
+                                                bias=layer.mlp.down_proj.bias,
+                                                clamp_min=1e-6, clamp_max=1e6)
+                    layer.mlp.down_proj = svd_down_proj
+                    
+                print("DEBUG SVD param keys:", list(self.z_vectors.keys()))
+                logging.info('SVD Done')
 
         assert whisper_path
         logging.info('Loading Whisper Model')
@@ -295,13 +313,13 @@ class SALMONN(nn.Module):
                 p_before_tokens = self.llama_tokenizer(
                     p_before, return_tensors="pt", add_special_tokens=False
                 ).to(embeds.device)
-                p_before_embeds = self.llama_model.model.embed_tokens(p_before_tokens.input_ids) if not self.lora else self.llama_model.model.model.embed_tokens(p_before_tokens.input_ids)
+                p_before_embeds = self.llama_model.model.embed_tokens(p_before_tokens.input_ids) 
 
                 # speech_embeds wrapped with prompts_embeds are padded to the same length here
                 p_after_tokens = self.llama_tokenizer(
                     p_after, return_tensors="pt", padding="longest", add_special_tokens=False
                 ).to(embeds.device)
-                p_after_embeds = self.llama_model.model.embed_tokens(p_after_tokens.input_ids) if not self.lora else self.llama_model.model.model.embed_tokens(p_after_tokens.input_ids)
+                p_after_embeds = self.llama_model.model.embed_tokens(p_after_tokens.input_ids) 
 
                 wrapped_embeds = torch.cat([p_before_embeds, embeds, p_after_embeds], dim=1)
                 wrapped_atts = torch.cat([p_before_tokens.attention_mask, atts, p_after_tokens.attention_mask], dim=1)
@@ -315,8 +333,8 @@ class SALMONN(nn.Module):
                 p_after_tokens = self.llama_tokenizer(
                     p_after, return_tensors="pt", add_special_tokens=False
                 ).to(embeds.device)
-                p_before_embeds = self.llama_model.model.embed_tokens(p_before_tokens.input_ids).expand(batch_size, -1, -1) if not self.lora else self.llama_model.model.model.embed_tokens(p_before_tokens.input_ids).expand(batch_size, -1, -1)
-                p_after_embeds = self.llama_model.model.embed_tokens(p_after_tokens.input_ids).expand(batch_size, -1, -1) if not self.lora else self.llama_model.model.model.embed_tokens(p_after_tokens.input_ids).expand(batch_size, -1, -1)
+                p_before_embeds = self.llama_model.model.embed_tokens(p_before_tokens.input_ids).expand(batch_size, -1, -1) 
+                p_after_embeds = self.llama_model.model.embed_tokens(p_after_tokens.input_ids).expand(batch_size, -1, -1) 
 
                 wrapped_embeds = torch.cat([p_before_embeds, embeds, p_after_embeds], dim=1)
                 wrapped_atts = torch.cat([p_before_tokens.attention_mask, atts, p_after_tokens.attention_mask], dim=1)
@@ -360,7 +378,7 @@ class SALMONN(nn.Module):
             max_length=self.max_txt_len,
             add_special_tokens=False
         ).to(spectrogram.device)
-        to_regress_embeds = self.llama_model.model.embed_tokens(to_regress_tokens.input_ids) if not self.lora else self.llama_model.model.model.embed_tokens(to_regress_tokens.input_ids)
+        to_regress_embeds = self.llama_model.model.embed_tokens(to_regress_tokens.input_ids) 
         targets = to_regress_tokens.input_ids.masked_fill(
             to_regress_tokens.input_ids == self.llama_tokenizer.pad_token_id, -100
         )
@@ -378,7 +396,7 @@ class SALMONN(nn.Module):
             dtype=to_regress_tokens.input_ids.dtype,
             device=to_regress_tokens.input_ids.device,
         ) * self.llama_tokenizer.bos_token_id
-        bos_embeds = self.llama_model.model.embed_tokens(bos) if not self.lora else self.llama_model.model.model.embed_tokens(bos)
+        bos_embeds = self.llama_model.model.embed_tokens(bos) 
         atts_bos = speech_atts[:, :1]
 
         inputs_embeds = torch.cat([bos_embeds, speech_embeds, to_regress_embeds], dim=1)
@@ -393,6 +411,17 @@ class SALMONN(nn.Module):
                 labels=targets,
             )
             loss = outputs.loss
+            logits = outputs.logits  # (batch, seq_len, vocab_size)
+            log_prob = F.log_softmax(logits, dim=-1)
+        
+            predicted_ids = logits.argmax(dim=-1)
+
+            pred_text_list = []
+            batch_size = predicted_ids.size(0)
+            for batch_idx in range(batch_size):
+                token_ids = predicted_ids[batch_idx].tolist()
+                decoded_str = self.llama_tokenizer.decode(token_ids, skip_special_tokens=True)
+                pred_text_list.append(decoded_str)
 
         if verbose:
             nvocab = self.llama_model.config.vocab_size
@@ -403,7 +432,8 @@ class SALMONN(nn.Module):
             total = len(labels[mask])
 
         if verbose:
-            return {"loss": loss, "correct": correct, "total": total}
+            return {"loss": loss, "correct": correct, "total": total,
+                    "log_prob": log_prob, "pred_texts": pred_text_list}
 
         return {"loss": loss}
 
@@ -424,7 +454,7 @@ class SALMONN(nn.Module):
             dtype=torch.int32,
             device=speech_embeds.device,
         ) * self.llama_tokenizer.bos_token_id
-        bos_embeds = self.llama_model.model.embed_tokens(bos) if not self.lora else self.llama_model.model.model.embed_tokens(bos)
+        bos_embeds = self.llama_model.model.embed_tokens(bos) 
         atts_bos = speech_atts[:, :1]
 
         embeds = torch.cat([bos_embeds, speech_embeds], dim=1)
@@ -468,10 +498,8 @@ class SALMONN(nn.Module):
         speech_llama_proj_model = config.get("speech_llama_proj_model", "")
         freeze_speech_llama_proj = config.get("freeze_speech_llama_proj", False)
 
-        lora = config.get("lora", True)
-        lora_rank = config.get("lora_rank", 8)
-        lora_alpha = config.get("lora_alpha", 32)
-        lora_dropout = config.get("lora_dropout", 0.1)
+        use_svf = config.get("use_svf", True)
+        svf_rank = config.get("svf_rank", 8)
 
         multi_prompt = config.get("multi_prompt", False)
         prompt_path = config.get("prompt_path", "")
@@ -498,10 +526,8 @@ class SALMONN(nn.Module):
             second_stride=second_stride,
             speech_llama_proj_model=speech_llama_proj_model,
             freeze_speech_llama_proj=freeze_speech_llama_proj,
-            lora=lora,
-            lora_rank=lora_rank,
-            lora_alpha=lora_alpha,
-            lora_dropout=lora_dropout,
+            svf_rank=svf_rank,
+            use_svf=use_svf,
             multi_prompt=multi_prompt,
             prompt_path=prompt_path,
             prompt_template=prompt_template,

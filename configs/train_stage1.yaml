@@ -15,13 +15,13 @@
 
 model:
   # paths
-  llama_path: "/data/ckp/llama"
+  llama_path: "/data/ckp/llama_1b"
   whisper_path: "/data/ckp/whisper"
   beats_path: "/data/ckp/beats/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
 
   token: "<hf_token>"  # Use hf token to access gated repositories
   
-  ckpt: "/data/ckp/salmonn/salmonn_3b_nota.pth" #"model ckpt" # if not "", load model from ckpt for training or evaluation
+  ckpt: "" #"model ckpt" # if not "", load model from ckpt for training or evaluation
 
   freeze_whisper: True
   freeze_beats: True
@@ -37,11 +37,9 @@ model:
   speech_llama_proj_model: ""
   freeze_speech_llama_proj: False
 
-  # LoRA
-  lora: True
-  lora_rank: 8
-  lora_alpha: 32
-  lora_dropout: 0.1
+  # SVF
+  use_svf : True
+  svf_rank : 8
 
   multi_prompt: True
   prompt_template: "USER: {}\nASSISTANT:"
@@ -53,7 +51,7 @@ model:
 datasets:
   prefix: "/data/data"
   
-  train_ann_path: "/data/data/stage1_train.json"
+  train_ann_path: "/data/data/stage1_train.json" # "data/example_data.json"
   valid_ann_path: "/data/data/stage1_valid.json"
   test_ann_path: "/data/data/stage1_test.json"
 
@@ -68,7 +66,7 @@ run:
 
   log_freq: 5
   epoch_based: False
-  iters_per_epoch: 3000
+  iters_per_epoch: 20
   accum_grad_iters: 1
   batch_size_train: 8
   batch_size_eval: 8

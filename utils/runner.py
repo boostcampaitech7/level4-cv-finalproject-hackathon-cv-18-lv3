@@ -8,6 +8,7 @@ from pathlib import Path
 import logging
 
 import torch
+import torch.nn.functional as F
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from tensorboardX import SummaryWriter
@@ -17,10 +18,12 @@ from utils.dist_utils import main_process, is_dist_avail_and_initialized, is_mai
 from utils.logger import MetricLogger, SmoothedValue
 from utils.utils import get_dataloader, prepare_sample
 from optims import get_optimizer, LinearWarmupCosineLRScheduler
-
+from utils.metrics import compute_wer, compute_spider
 
 class Runner:
     def __init__(self, cfg, model, datasets, job_id, dryrun):
+        super().__init__()
+
         self.config = cfg
 
         # dryrun (test with dummy model)
@@ -92,6 +95,19 @@ class Runner:
         )
 
         self.log_config()
+
+        self.use_svf = self.config.config.model.get("use_svf", False)
+        self.svf_rank = self.config.config.model.get("svf_rank", 8)
+        
+        if self.use_svf:
+            z_params = []
+            for name, param in self.model.named_parameters():
+                if "z_vector" in name:
+                    param.requires_grad = True
+                    z_params.append(param)
+            self.svf_optimizer = torch.optim.Adam(z_params, lr=2e-3)
+        else:
+            self.svf_optimizer = None
         
     def unwrap_dist_model(self, model):
         if self.use_distributed:
@@ -113,6 +129,92 @@ class Runner:
         )
         header = "Train: data epoch: [{}]".format(epoch)
 
+        def model_forward(samples, no_grad=False):
+            if no_grad:
+                with torch.no_grad():
+                    outputs = self.model(samples, verbose=True)
+            else:
+                outputs = self.model(samples, verbose=True)
+
+            return outputs
+        
+        def preprocess_texts(texts):
+            processed_texts = []
+            for text in texts:
+                tokens = text.split()
+                unique_tokens = list(dict.fromkeys(tokens))
+                unique_tokens = unique_tokens[:50] 
+                if len(unique_tokens) == 0:
+                    processed_text = "<empty>"
+                
+                processed_text = " ".join(unique_tokens)
+                processed_texts.append(processed_text)
+            return processed_texts
+        
+        def compute_rewards(samples, outputs):
+            pred_texts = preprocess_texts(outputs["pred_texts"])
+            ref_texts = preprocess_texts(samples["text"])
+
+            # `pred_texts`가 `list[str]`인지 확인 후 변환
+            if isinstance(pred_texts, str):
+                pred_texts = [pred_texts]  # 단일 문자열이면 리스트로 변환
+            elif not isinstance(pred_texts, list) or not all(isinstance(p, str) for p in pred_texts):
+                raise ValueError(f"Unexpected pred_texts type: {type(pred_texts)}")
+            
+            # `ref_texts`가 `list[list[str]]`인지 확인 후 변환
+            if isinstance(ref_texts, str):
+                ref_texts = [[ref_texts]]
+            elif isinstance(ref_texts, list) and all(isinstance(r, str) for r in ref_texts):
+                ref_texts = [[r] for r in ref_texts]  
+            elif not isinstance(ref_texts, list) or not all(isinstance(r, list) for r in ref_texts):
+                raise ValueError(f"Unexpected ref_texts format: {ref_texts}")
+            
+            task_type = samples["task"][0] # task_type은 첫 번째 task로 통일
+            print("  task_type:", task_type) # 디버그 출력: task_type 확인
+            
+            if task_type in ["asr"]:
+                wer_value = compute_wer(pred_texts, ref_texts)
+                print("  wer_value:", wer_value) # 디버그 출력: wer_value 확인
+                if wer_value is None:
+                    print("  Warning: WER calculation return None. Setting wer_value to 1.0.")
+                    wer_value = 1.0
+                reward = max(0, 1.0 - wer_value)
+                print("  reward_wer:", reward) # 디버그 출력: reward 확인
+                
+            elif task_type in ["QA", "audiocaption", "audiocaption_v2", "gender_recognition", "phone_recognition"]:
+                spider_value = 0.0
+                
+                try:
+                    spider_result = spider(candidates=pred_texts, mult_references=ref_texts, java_path="/usr/bin/java")
+                    spider_value = round(float(spider_result[0]['spider']),4)   
+                except Exception as e:
+                    print("  Warning: SPIDER calculation failed. Setting reward to 0.0.")
+                
+                reward = spider_value / 5.5
+            
+            else:
+                reward = 0.0
+
+            return torch.tensor(reward, dtype=torch.float, device=outputs["log_prob"].device)
+
+        def compute_kl_divergence(ref_outputs, new_outputs):
+            # KL 발산 계산. ref_outputs : 학습 전 policy, new_outputs : 학습 후 policy
+            tau = 0.7
+            ref_logits = ref_outputs["log_prob"].float().detach() / tau
+            new_logits = new_outputs["log_prob"].float() / tau
+            
+            if ref_logits.size() != new_logits.size():
+                min_len = min(ref_logits.size(1), new_logits.size(1))
+                ref_logits = ref_logits[:, :min_len, :]
+                new_logits = new_logits[:, :min_len, :]
+
+            ref_probs = F.softmax(ref_logits, dim=-1)
+            new_log_prob = F.log_softmax(new_logits, dim=-1)
+
+            kl_div = F.kl_div(new_log_prob, ref_probs, reduction='batchmean', log_target=True)
+
+            return torch.clamp(kl_div, min=0.0, max=20.0) # 최대값 20.0으로 제한
+     
         for i in metric_logger.log_every(range(self.iters_per_epoch), self.config.config.run.log_freq, header=header, logger=self.log_writter, start_step=epoch*self.iters_per_epoch):
             if i >= self.iters_per_epoch:
                 break
@@ -124,20 +226,52 @@ class Runner:
                 self.scheduler.step(cur_epoch=epoch, cur_step=i)
 
                 with torch.cuda.amp.autocast(enabled=self.use_amp):
-                    loss = self.model(samples)["loss"]
+                    # loss = self.model(samples)["loss"]
+
+                    # supervised learning
+                    base_outputs = self.model(samples)
+                    base_loss = base_outputs["loss"]
+
+                    # RL
+                    if self.use_svf:
+                        # first pass
+                        old_outputs = model_forward(samples, no_grad=True)
+                        # second pass
+                        new_outputs = model_forward(samples, no_grad=False)
+
+                        rewards = compute_rewards(samples, new_outputs)
+                        kl_div = compute_kl_divergence(old_outputs, new_outputs)
+                        lambda_kl = 0.01
+                        # RL loss
+                        rl_loss = (-(new_outputs["log_prob"] * rewards).mean() + lambda_kl * kl_div).float()
+                        # combined loss
+                        loss = (base_loss + rl_loss).float()
+                    else:
+                        loss = base_loss
 
                 if self.use_amp:
+                    torch.autograd.set_detect_anomaly(True)
                     self.scaler.scale(loss).backward()
                 else:
                     loss.backward()
 
                 if (i + 1) % self.config.config.run.accum_grad_iters == 0:
                     if self.use_amp:
+                        self.scaler.unscale_(self.optimizer)
+                        if self.svf_optimizer:
+                            self.scaler.unscale_(self.svf_optimizer)
                         self.scaler.step(self.optimizer)
+                        if self.svf_optimizer:
+                            self.scaler.step(self.svf_optimizer)
                         self.scaler.update()
                     else:
                         self.optimizer.step()
+                        if self.svf_optimizer:
+                            self.svf_optimizer.step()
+
                     self.optimizer.zero_grad()
+                    if self.svf_optimizer:
+                        self.svf_optimizer.zero_grad() 
 
                 metric_logger.update(loss=loss.item())
                 metric_logger.update(lr=self.optimizer.param_groups[0]["lr"])
