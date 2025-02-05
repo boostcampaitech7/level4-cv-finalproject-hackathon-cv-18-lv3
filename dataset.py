@@ -21,7 +21,7 @@ import soundfile as sf
 import numpy as np
 from transformers import WhisperFeatureExtractor
 import librosa
-
+import torchaudio.compliance.kaldi as ta_kaldi
 
 class SALMONNDataset(Dataset):
     def __init__(self, prefix, ann_path, whisper_path):
@@ -29,9 +29,16 @@ class SALMONNDataset(Dataset):
 
         self.prefix = prefix
 
-        self.annotation = json.load(open(ann_path, "r"))["annotation"]
+        if ann_path is not None and ann_path != "":
+            self.annotation = json.load(open(ann_path, "r"))["annotation"]
+        else:
+            self.annotation = []
 
         self.wav_processor = WhisperFeatureExtractor.from_pretrained(whisper_path)
+
+        self.beats_num_mel_bins = 128
+        self.beats_fbank_mean = 15.41663
+        self.beats_fbank_std = 6.55582
 
     def __len__(self):
         return len(self.annotation)
@@ -39,6 +46,9 @@ class SALMONNDataset(Dataset):
     def collater(self, samples):
         samples_spectrogram = [s["spectrogram"] for s in samples]
         cat_spectrogram = torch.stack(samples_spectrogram, dim=0)
+
+        beats_specs = [s["beats_spectrogram"] for s in samples]
+        cat_beats_spec = torch.stack(beats_specs, dim=0)
 
         raw_wav = [torch.from_numpy(s["raw_wav"]) for s in samples]
         raw_wav_length = torch.tensor([len(s["raw_wav"]) for s in samples])
@@ -52,6 +62,7 @@ class SALMONNDataset(Dataset):
 
         return {
             "spectrogram": cat_spectrogram,
+            "beats_spectrogram": cat_beats_spec,
             "raw_wav": raw_wav,
             "padding_mask": paddding_mask,
             "text": text,
@@ -90,13 +101,23 @@ class SALMONNDataset(Dataset):
 
         audio = audio[: sr * 30] # truncate audio to at most 30s
 
-        spectrogram = self.wav_processor(audio, sampling_rate=sr, return_tensors="pt")["input_features"].squeeze()
+        # spectrogram = self.wav_processor(audio, sampling_rate=sr, return_tensors="pt")["input_features"].squeeze()
+        # whisper용 80-bin mel spectrogram 추출
+        whisper_spec = self.wav_processor(audio, sampling_rate=sr, return_tensors="pt")["input_features"].squeeze()
+        
+        # BEATs용 128-bin mel spectrogram 추출
+        waveform = torch.from_numpy(audio).float()
+        waveform_batch = waveform.unsqueeze(0)
+        beats_spec = self.preprocess(waveform_batch, fbank_mean=self.beats_fbank_mean, fbank_std=self.beats_fbank_std)
+        beats_spec = (beats_spec - self.beats_fbank_mean) / (2 * self.beats_fbank_std)
+        
         text = ann["text"]
         task = ann.get("task", "asr")
         Q = ann.get("Q", "")
 
         return {
-            "spectrogram": spectrogram,
+            "spectrogram": whisper_spec,
+            "beats_spectrogram": beats_spec,
             "raw_wav": audio,
             "text": text,
             "task": task,

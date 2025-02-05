@@ -137,8 +137,13 @@ class BEATs(nn.Module):
             fbank_mean: float = 15.41663,
             fbank_std: float = 6.55582,
             feature_only=False,
+            beats_spectrogram: Optional[torch.Tensor] = None,
     ):
-        fbank = self.preprocess(source, fbank_mean=fbank_mean, fbank_std=fbank_std).to(torch.float32)
+        # fbank = self.preprocess(source, fbank_mean=fbank_mean, fbank_std=fbank_std).to(torch.float32)
+        if (beats_spectrogram is not None) and (not self.training):
+            fbank = beats_spectrogram.to(torch.float32)
+        else:
+            fbank = self.preprocess(source, fbank_mean=fbank_mean, fbank_std=fbank_std).to(torch.float32)
 
         if padding_mask is not None:
             padding_mask = self.forward_padding_mask(fbank, padding_mask)

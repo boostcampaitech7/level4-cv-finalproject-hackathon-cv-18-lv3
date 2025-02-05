@@ -271,12 +271,16 @@ class SALMONN(nn.Module):
 
         return speech_embeds, speech_atts
 
-    def encode_speech(self, spectrogram, raw_wav=None, audio_padding_mask=None):
+    def encode_speech(self, spectrogram, beats_spectrogram, raw_wav=None, audio_padding_mask=None):
         with self.maybe_autocast():
             speech_embeds = self.speech_encoder(spectrogram, return_dict=True).last_hidden_state
 
-            if self.beats_path and raw_wav is not None:
-                audio_embeds, _ = self.beats.extract_features(raw_wav, padding_mask=audio_padding_mask, feature_only=True)
+            if self.beats_path and (beats_spectrogram is not None):
+                audio_embeds, _ = self.beats.extract_features(
+                    None,
+                    padding_mask=audio_padding_mask, 
+                    feature_only=True,
+                    beats_spectrogram=beats_spectrogram)
             else:
                 audio_embeds = None
                         
@@ -341,10 +345,11 @@ class SALMONN(nn.Module):
 
         # use speech/audio encoder to encode speech/audio
         spectrogram = samples["spectrogram"]
+        beats_spectrogram = samples["beats_spectrogram"]
         raw_wav = samples.get("raw_wav", None)
         audio_padding_mask = samples.get("padding_mask", None)
 
-        speech_embeds, speech_atts = self.encode_speech(spectrogram, raw_wav=raw_wav, audio_padding_mask=audio_padding_mask)
+        speech_embeds, speech_atts = self.encode_speech(spectrogram, beats_spectrogram=beats_spectrogram, raw_wav=raw_wav, audio_padding_mask=audio_padding_mask)
 
         # wrap speech_embeds with prompts
         if self.prompt_dict:
@@ -412,9 +417,10 @@ class SALMONN(nn.Module):
 
         spectrogram = samples["spectrogram"]
         raw_wav = samples.get("raw_wav", None)
+        beats_spectrogram = samples.get("beats_spectrogram", None)
         audio_padding_mask = samples.get("padding_mask", None)
 
-        speech_embeds, speech_atts = self.encode_speech(spectrogram, raw_wav=raw_wav, audio_padding_mask=audio_padding_mask)
+        speech_embeds, speech_atts = self.encode_speech(spectrogram, beats_spectrogram=beats_spectrogram, raw_wav=raw_wav, audio_padding_mask=audio_padding_mask)
 
         if prompts is not None:
             speech_embeds, speech_atts = self.prompt_wrap(speech_embeds, speech_atts, prompts, multi_prompt=True)
@@ -517,6 +523,15 @@ class SALMONN(nn.Module):
         if ckpt_path:
             logging.info("Load SALMONN ckpt from: {}".format(ckpt_path))
             ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=True)
-            model.load_state_dict(ckpt['model'], strict=False)
+            # model.load_state_dict(ckpt['model'], strict=False)
+            state_dict = ckpt['model']
+            model_state_dict = model.state_dict()
 
+            filtered_state_dict = {
+                k: v for k, v in state_dict.items()
+                if k in model_state_dict and v.size() == model_state_dict[k].size()
+            }
+
+            model.load_state_dict(filtered_state_dict, strict=False)
+        
         return model

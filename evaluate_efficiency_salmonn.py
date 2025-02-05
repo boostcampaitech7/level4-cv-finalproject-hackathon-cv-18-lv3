@@ -16,6 +16,7 @@ import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from transformers import WhisperFeatureExtractor
+import torchaudio.compliance.kaldi as ta_kaldi
 
 # From trainer
 from config import Config
@@ -41,25 +42,47 @@ def load_preprocessor(cfg):
 
 class MockDataset(SALMONNDataset):
     def __init__(self, cfg, sr, audio_length, dataset_length):
+        super().__init__(
+            prefix=cfg.config.datasets.prefix,
+            ann_path=None,
+            whisper_path=cfg.config.datasets.whisper_path
+        )
         self.sr = sr
         self.audio_length = audio_length
         self.dataset_length = dataset_length
-        self.prefix = cfg.config.datasets.prefix
-        self.wav_processor = WhisperFeatureExtractor.from_pretrained(
-            cfg.config.datasets.whisper_path
-        )
+        # self.prefix = cfg.config.datasets.prefix
+        # self.wav_processor = WhisperFeatureExtractor.from_pretrained(
+        #     cfg.config.datasets.whisper_path
+        # )
         self.random_sample = np.random.randn(self.sr * self.audio_length)
+        self.beats_num_mel_bins = 128
+        self.beats_fbank_mean = 15.41663
+        self.beats_fbank_std = 6.55582
 
     def __len__(self):
         return self.dataset_length
 
     def __getitem__(self, idx):
         audio = self.random_sample.copy()
-        spectrogram = self.wav_processor(
+        whisper_spec = self.wav_processor(
             audio, sampling_rate=self.sr, return_tensors="pt"
         )["input_features"].squeeze()
+        # BEATs용 mel spectrogram 계산
+        waveform = torch.from_numpy(audio).float()
+        waveform = waveform.unsqueeze(0) * (2 ** 15)
+
+        fbank = ta_kaldi.fbank(
+                waveform,
+                num_mel_bins=self.beats_num_mel_bins,
+                sample_frequency=self.sr,
+                frame_length=25,
+                frame_shift=10,
+            )
+        beats_spec = (fbank - self.beats_fbank_mean) / (2 * self.beats_fbank_std)
+
         return {
-            "spectrogram": spectrogram,
+            "spectrogram": whisper_spec,
+            "beats_spectrogram": beats_spec, 
             "raw_wav": audio,
             "text": "test",
             "task": "asr",
@@ -107,17 +130,21 @@ def get_gpu_memory_usage():
     return gpu_memory
 
 
-def model_inference(cfg, samples, test_prompt, salmonn):
+def model_inference(cfg, samples, test_prompt, salmonn, beats_mel=None):
     # TTFT
     start_time = time.time()
     llm = salmonn.llama_model
 
     batch_size = samples["spectrogram"].shape[0]
     spectrogram = samples["spectrogram"]
-    raw_wav = samples.get("raw_wav", None)
+    beats_spec = samples["beats_spectrogram"]
+    # raw_wav = samples.get("raw_wav", None)
     audio_padding_mask = samples.get("padding_mask", None)
     speech_embeds, speech_atts = salmonn.encode_speech(
-        spectrogram, raw_wav=raw_wav, audio_padding_mask=audio_padding_mask
+        spectrogram,
+        beats_spectrogram=beats_spec,
+        # raw_wav=raw_wav, 
+        audio_padding_mask=audio_padding_mask
     )
 
     prompts = [test_prompt[task] for task in samples["task"]]
