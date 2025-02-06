@@ -27,6 +27,8 @@ from utils.dist_utils import get_rank, init_distributed_mode
 from models import load_model
 from dataset import SALMONNDataset
 from utils.runner import Runner
+from utils.runner_distillation import KD_Runner
+
 
 from dotenv import load_dotenv
 
@@ -43,7 +45,7 @@ def parse_args():
     )
     parser.add_argument("--dryrun", action='store_true', help='if True, use dummy model and skip forward/backward')
     parser.add_argument("--pruned", action='store_true', help='check if llm pruned')
-
+    parser.add_argument("--kd", action='store_true', help="if True, run Knowledge Distillation mode" )
     return parser.parse_args()
 
 
@@ -97,6 +99,14 @@ def main():
 
     # build model
     if not args.dryrun:
+        if args.kd :
+            model_config.ckpt = model_config.ckpt_teacher
+            teacher_model = load_model(model_config)
+
+            model_config.ckpt = model_config.ckpt_student
+            model_config.low_resource = True 
+            student_model = load_model(model_config)
+    
         if args.pruned:
             model_config['pruned'] = True
         model = load_model(model_config)
@@ -105,7 +115,11 @@ def main():
         model = AutoModelForCausalLM.from_pretrained("apple/OpenELM-270M-Instruct", trust_remote_code=True)
 
     # build runner
-    runner = Runner(cfg, model, datasets, job_id, args.dryrun)
+    if args.kd :
+        runner = KD_Runner(cfg, teacher_model,student_model, datasets, job_id, args.dryrun)
+        print(f"Training KD mode: Alpha={model_config.alpha}, Temperature={model_config.temperature}")
+    else :
+        runner = Runner(cfg, model, datasets, job_id, args.dryrun)
 
     # train
     runner.train()

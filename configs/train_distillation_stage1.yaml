@@ -23,6 +23,7 @@ model:
   
   ckpt_teacher: "/data/hj/level4-cv-finalproject-hackathon-cv-18-lv3/salmonn_3b_nota.pth" #"model ckpt" # if not "", load model from ckpt for training or evaluation
   ckpt_student: "" # 없으면 안 넣어도 됨
+  kd : True  # knowledge distillation 실행 유무 
 
   temperature:  2.0
   alpha: 0.5
