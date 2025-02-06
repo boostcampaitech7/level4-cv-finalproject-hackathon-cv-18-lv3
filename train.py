@@ -100,13 +100,18 @@ def main():
     # build model
     if not args.dryrun:
         if args.kd :
+            
+            model_config.ckpt = model_config.ckpt_student
+            student_model = load_model(model_config)
+
+            model_config.llama_path = model_config.teacher_llama_path
+            model_config.whisper_path = model_config.teacher_whisper_path
             model_config.ckpt = model_config.ckpt_teacher
             teacher_model = load_model(model_config)
 
-            model_config.ckpt = model_config.ckpt_student
-            model_config.low_resource = True 
-            student_model = load_model(model_config)
-    
+            # llm 출력 층이 다르면 projection 층 
+
+
         if args.pruned:
             model_config['pruned'] = True
         model = load_model(model_config)
@@ -116,7 +121,7 @@ def main():
 
     # build runner
     if args.kd :
-        runner = KD_Runner(cfg, teacher_model,student_model, datasets, job_id, args.dryrun)
+        runner = KD_Runner(cfg, teacher_model, student_model, datasets, job_id, args.dryrun)
         print(f"Training KD mode: Alpha={model_config.alpha}, Temperature={model_config.temperature}")
     else :
         runner = Runner(cfg, model, datasets, job_id, args.dryrun)

@@ -539,7 +539,7 @@ class SALMONN(nn.Module):
         token = config.get("token", None)
         pruned = config.get("pruned", False)
         pruned_path = config.get("pruned_path","")
-        kd = config.get("knowledge_distillation", False)
+        kd = config.get("kd", False)
         only_preprocessor = config.get("only_preprocessor", None)
 
         model = cls(

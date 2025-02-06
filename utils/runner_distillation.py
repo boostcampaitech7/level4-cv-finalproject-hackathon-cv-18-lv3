@@ -141,9 +141,12 @@ class KD_Runner:
                 # Teacher forward pass
                 with torch.no_grad():
                     teacher_out = self.teacher(samples)
+               #     print(teacher_out)
+               #     print(type(teacher_out))
                     teacher_logits = teacher_out["logits"]
                     teacher_logits = teacher_logits / self.config.config.model.temperature # soft label 생성 
                     prompt = teacher_out["prompt"]
+                    
                     del teacher_out
 
                 with torch.amp.autocast(device_type="cuda", enabled=self.use_amp):
