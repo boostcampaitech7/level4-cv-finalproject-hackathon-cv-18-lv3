@@ -31,6 +31,9 @@ from .modeling_whisper import WhisperModel
 from .beats.BEATs import BEATsConfig, BEATs
 from .utils import StoppingCriteriaSub
 
+# implementation for qlora
+from transformers import BitsAndBytesConfig
+from peft import prepare_model_for_kbit_training
 
 class SALMONN(nn.Module):
     @classmethod
@@ -92,6 +95,7 @@ class SALMONN(nn.Module):
         max_txt_len=128,
         end_sym="</s>",
         low_resource=False,  # use 8 bit
+        qlora=True, # implementation for qlora
         device_8bit=0,  # the device of 8bit model should be set when loading and cannot be changed anymore.
         token=None,
         only_preprocessor=None,
@@ -110,6 +114,7 @@ class SALMONN(nn.Module):
         self.max_txt_len = max_txt_len
         self.end_sym = end_sym
         self.low_resource = low_resource
+        self.qlora = qlora
         self.pruned = pruned
         self.pruned_path = pruned_path
 
@@ -118,10 +123,17 @@ class SALMONN(nn.Module):
         self.llama_tokenizer.add_special_tokens({'pad_token': '[PAD]'})
         self.llama_tokenizer.padding_side = "right"
 
+        if torch.cuda.get_device_capability()[0] >= 8:
+            self.dtype = torch.bfloat16
+            logging.info("bfloat16 is selected")
+        else : 
+            self.dtype = torch.float16
+            logging.info("float16 is selected")
+
         if not only_preprocessor:
             logging.info('Loading LLaMA Model')
             if self.pruned:
-                print(f'loading pruned model from {pruned_path}')
+                logging.info(f'loading pruned model from {pruned_path}')
                 self.llama_model = torch.load(
                     os.path.join(pruned_path,'model.pt'),
                 )
@@ -129,17 +141,36 @@ class SALMONN(nn.Module):
                 if self.low_resource:
                     self.llama_model = AutoModelForCausalLM.from_pretrained(
                         llama_path,
-                        torch_dtype=torch.float16,
+                        torch_dtype=self.dtype,
                         load_in_8bit=True,
                         device_map={"": device_8bit},
                         token=token,
                     )
+                elif self.qlora :
+                    logging.info('Quantizing LLaMA Model')
+                    self.bnb_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_use_double_quant=False,
+                        bnb_4bit_quant_type="nf4",
+                        bnb_4bit_compute_dtype=self.dtype
+                    )
+
+                    self.llama_model = AutoModelForCausalLM.from_pretrained(
+                        llama_path,
+                        quantization_config = self.bnb_config,
+                        torch_dtype=self.dtype,
+                        device_map={"" :0},
+                        token=token
+                    )
+
+                    self.llama_model.gradient_checkpointing_enable()
+                    self.llama_model = prepare_model_for_kbit_training(self.llama_model)
                 else:
                     self.llama_model = AutoModelForCausalLM.from_pretrained(
                         llama_path,
-                        torch_dtype=torch.float16,
+                        torch_dtype=self.dtype,
                         token=token,
-                )
+                    )
 
             self.llama_model.resize_token_embeddings(len(self.llama_tokenizer))
             for name, param in self.llama_model.named_parameters():
@@ -239,7 +270,7 @@ class SALMONN(nn.Module):
             print("Loading training prompts done!")
 
     def _encode_auditory_feature(self, speech_embeds, audio_embeds=None):
-        with self.maybe_autocast():
+        with self.maybe_autocast(dtype=self.dtype):
             if self.use_speech_Qformer:
                 speech_embeds = self.ln_speech(speech_embeds)
                 if audio_embeds is not None:
@@ -284,7 +315,7 @@ class SALMONN(nn.Module):
         return speech_embeds, speech_atts
 
     def encode_speech(self, spectrogram, raw_wav=None, audio_padding_mask=None):
-        with self.maybe_autocast():
+        with self.maybe_autocast(dtype=self.dtype):
             speech_embeds = self.speech_encoder(spectrogram, return_dict=True).last_hidden_state
 
             if self.beats_path and raw_wav is not None:
@@ -397,7 +428,7 @@ class SALMONN(nn.Module):
         attention_mask = torch.cat([atts_bos, speech_atts, to_regress_tokens.attention_mask], dim=1)
 
         # calulate loss
-        with self.maybe_autocast():
+        with self.maybe_autocast(self.dtype):
             outputs = self.llama_model(
                 inputs_embeds=inputs_embeds,
                 attention_mask=attention_mask,
@@ -491,6 +522,7 @@ class SALMONN(nn.Module):
         max_txt_len = config.get("max_txt_len", 128)
         end_sym = config.get("end_sym", "</s>")
         low_resource = config.get("low_resource", False)
+        qlora = config.get("qlora", True)
         device_8bit = config.get("device_8bit", 0)
 
         token = config.get("token", None)
@@ -522,6 +554,7 @@ class SALMONN(nn.Module):
             max_txt_len=max_txt_len,
             end_sym=end_sym,
             low_resource=low_resource,
+            qlora=qlora,
             device_8bit=device_8bit,
             token=token,
             only_preprocessor=only_preprocessor,
