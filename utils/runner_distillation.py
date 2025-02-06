@@ -20,7 +20,7 @@ from optims import get_optimizer, LinearWarmupCosineLRScheduler
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-class Runner:
+class KD_Runner:
     def __init__(self, cfg, teacher_model, student_model, datasets, job_id, dryrun):
         self.config = cfg
 
@@ -143,10 +143,11 @@ class Runner:
                     teacher_out = self.teacher(samples)
                     teacher_logits = teacher_out["logits"]
                     teacher_logits = teacher_logits / self.config.config.model.temperature # soft label 생성 
+                    prompt = teacher_out["prompt"]
                     del teacher_out
 
                 with torch.amp.autocast(device_type="cuda", enabled=self.use_amp):
-                    student_out = self.model(samples)
+                    student_out = self.model(samples, prompt)
                     student_loss = student_out["loss"] # student model 의 CE 값 가져오기 
                     student_logits = student_out["logits"] / self.config.config.model.temperature
                     del student_out
