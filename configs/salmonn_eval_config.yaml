@@ -21,7 +21,7 @@ model:
   token: "<hf_token>" # Use hf token to access gated repositories
   only_preprocessor: False
 
-  ckpt: "D:\\work_dir\\level4-cv-finalproject-hackathon-cv-18-lv3\\outputs_stage2\\checkpoint_best.pth" # model used for decoding
+  ckpt: "outputs_stage2/checkpoint_best.pth" # model used for decoding
 
   freeze_whisper: True
   freeze_beats: True

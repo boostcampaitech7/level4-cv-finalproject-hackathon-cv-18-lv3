@@ -26,7 +26,7 @@ from config import Config
 from utils.dist_utils import get_rank, init_distributed_mode
 from models import load_model
 from dataset import SALMONNDataset
-from utils.runner import Runner
+from utils.runner_distillation import Runner
 
 from dotenv import load_dotenv
 
@@ -42,7 +42,6 @@ def parse_args():
         "change to --cfg-options instead.",
     )
     parser.add_argument("--dryrun", action='store_true', help='if True, use dummy model and skip forward/backward')
-    parser.add_argument("--pruned", action='store_true', help='check if llm pruned')
 
     return parser.parse_args()
 
@@ -66,9 +65,9 @@ def main():
     args = parse_args()
     cfg = Config(args)
 
-    assert cfg.config.model.token in ('', "", "<hf_token>"), "Please remove the hf_token from the .yaml file. You must replace it with '' or <hf_token> and create .env file and write 'HF_TOKEN=<your token>' in it to safetly preceed"
-    assert load_dotenv(".env"), "Please create .env file and write 'HF_TOKEN=<your token>'"
-    cfg.config.model.token = os.getenv("HF_TOKEN")
+    # assert cfg.config.model.token in ('', "", "<hf_token>"), "Please remove the hf_token from the .yaml file. You must replace it with '' or <hf_token> and create .env file and write 'HF_TOKEN=<your token>' in it to safetly preceed"
+    # assert load_dotenv(".env"), "Please create .env file and write 'HF_TOKEN=<your token>'"
+    # cfg.config.model.token = os.getenv("HF_TOKEN")
     
     run_config = cfg.config.run
     model_config = cfg.config.model
@@ -80,10 +79,10 @@ def main():
     setup_logger() # set after init_distributed_mode() to only log on master.
 
     # Wandb logger
-    global_rank = int(os.environ["RANK"])
-    if global_rank == 0:
-        wandb.login()
-        wandb.init(project="audio_lm", name=run_config.exp_name)
+    # global_rank = int(os.environ["RANK"])
+    # if global_rank == 0:
+    #     wandb.login()
+    #     wandb.init(project="audio_lm", name=run_config.exp_name)
 
     # print config
     cfg.pretty_print()
@@ -97,15 +96,23 @@ def main():
 
     # build model
     if not args.dryrun:
-        if args.pruned:
-            model_config['pruned'] = True
-        model = load_model(model_config)
+
+        # teacher model 
+        model_config.ckpt = model_config.ckpt_teacher
+        teacher_model = load_model(model_config)
+
+        model_config.ckpt = model_config.ckpt_student
+        model_config.llama_path = model_config.llama_path
+        model_config.low_resource = True
+        student_model = load_model(model_config)
+
     else: # load small dummy language model
         from transformers import AutoModelForCausalLM
         model = AutoModelForCausalLM.from_pretrained("apple/OpenELM-270M-Instruct", trust_remote_code=True)
 
     # build runner
-    runner = Runner(cfg, model, datasets, job_id, args.dryrun)
+    runner = Runner(cfg, teacher_model, student_model, datasets, job_id, args.dryrun)
+    print(f"Training Start: Alpha={model_config.alpha}, Temperature={model_config.temperature}")
 
     # train
     runner.train()

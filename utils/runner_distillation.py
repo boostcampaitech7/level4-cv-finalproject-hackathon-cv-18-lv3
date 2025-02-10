@@ -11,24 +11,22 @@ import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from tensorboardX import SummaryWriter
-import wandb
+import torch.nn.functional as F
 
 from utils.dist_utils import main_process, is_dist_avail_and_initialized, is_main_process, get_rank, get_world_size
 from utils.logger import MetricLogger, SmoothedValue
 from utils.utils import get_dataloader, prepare_sample
 from optims import get_optimizer, LinearWarmupCosineLRScheduler
+import sys
 
-
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 class Runner:
-    def __init__(self, cfg, model, datasets, job_id, dryrun, pruned = False):
+    def __init__(self, cfg, teacher_model, student_model, datasets, job_id, dryrun):
         self.config = cfg
 
         # dryrun (test with dummy model)
         self.dryrun = dryrun
-        
-        # pruned (check if model pruned)
-        self.pruned = pruned
-        
+
         # log
         self.output_dir = Path(self.config.config.run.output_dir) / job_id
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -55,13 +53,17 @@ class Runner:
                     self.test_prompt_dict = json.load(f)
             for k in self.test_prompt_dict.keys():
                 self.test_prompt_dict[k] = self.prompt_template.format(self.test_prompt_dict[k])
-
         else:
             self.test_prompt_dict = None
 
         # model
-        self._model = model
+        self.teacher = teacher_model 
+        self.teacher.to(self.device)
+        self.teacher.eval()  # teacher model frozen 
+
+        self._model = student_model
         self._model.to(self.device)
+
         if self.use_distributed:
             self.model = DDP(
                 self._model, device_ids=[self.config.config.run.gpu]
@@ -103,6 +105,7 @@ class Runner:
             return model
 
     def train_epoch(self, epoch):
+        """Train one epoch with knowledge distillation logging (epoch-wise logging)."""
         self.model.train()
 
         metric_logger = MetricLogger(delimiter="  ")
@@ -110,13 +113,22 @@ class Runner:
         metric_logger.add_meter("loss", SmoothedValue(window_size=1, fmt="{value:.4f}"))
 
         logging.info(
-            "Start training epoch {}, {} iters per inner epoch.".format(
-                epoch, self.iters_per_epoch
-            )
+            f"Start training epoch {epoch}, {self.iters_per_epoch} iters per inner epoch."
         )
-        header = "Train: data epoch: [{}]".format(epoch)
+        header = f"Train: data epoch: [{epoch}]"
 
-        for i in metric_logger.log_every(range(self.iters_per_epoch), self.config.config.run.log_freq, header=header, logger=self.log_writter, start_step=epoch*self.iters_per_epoch):
+        total_student_loss = 0
+        total_kd_loss = 0
+        total_total_loss = 0
+        num_steps = 0
+
+        for i in metric_logger.log_every(
+            range(self.iters_per_epoch),
+            self.config.config.run.log_freq,
+            header=header,
+            logger=self.log_writter,
+            start_step=epoch * self.iters_per_epoch
+        ):
             if i >= self.iters_per_epoch:
                 break
             
@@ -126,8 +138,30 @@ class Runner:
             if not self.dryrun:
                 self.scheduler.step(cur_epoch=epoch, cur_step=i)
 
-                with torch.cuda.amp.autocast(enabled=self.use_amp):
-                    loss = self.model(samples)["loss"]
+                # Teacher forward pass
+                with torch.no_grad():
+                    teacher_out = self.teacher(samples)
+                    teacher_logits = teacher_out["logits"]
+                    teacher_logits = teacher_logits / self.config.config.model.temperature # soft label 생성 
+                    del teacher_out
+
+                with torch.amp.autocast(device_type="cuda", enabled=self.use_amp):
+                    student_out = self.model(samples)
+                    student_loss = student_out["loss"] # student model 의 CE 값 가져오기 
+                    student_logits = student_out["logits"] / self.config.config.model.temperature
+                    del student_out
+
+                    # KD Loss = alpha * CE + (1-alpha)* T^2 * KL 
+                    T = self.config.config.model.temperature
+                    soft_loss = (T ** 2) * F.kl_div(
+                        F.log_softmax(student_logits, dim=-1),
+                        F.softmax(teacher_logits, dim=-1),
+                        reduction="batchmean"
+                    )
+                    loss = self.config.config.model.alpha * student_loss + \
+                        (1 - self.config.config.model.alpha) * soft_loss
+
+                del student_logits, teacher_logits
 
                 if self.use_amp:
                     self.scaler.scale(loss).backward()
@@ -144,19 +178,27 @@ class Runner:
 
                 metric_logger.update(loss=loss.item())
                 metric_logger.update(lr=self.optimizer.param_groups[0]["lr"])
-                
-                global_rank = int(os.environ["RANK"])
-                if global_rank == 0:
-                    wandb.log({"train/iteration": i, "train/loss": loss.item(), "train/lr": self.optimizer.param_groups[0]["lr"]})
-            else: # dryrun, no model availble
-                metric_logger.update(loss=0.0)
-                metric_logger.update(lr=0.0)
-                global_rank = int(os.environ["RANK"])
-                if global_rank == 0:
-                    wandb.log({"train/iteration": i, "train/loss": 0.0, "train/lr": 0.0})
+
+                total_student_loss += student_loss.item()
+                total_kd_loss += soft_loss.item()
+                total_total_loss += loss.item()
+                num_steps += 1
+
+                del loss, student_loss, soft_loss
+                torch.cuda.empty_cache()
+            
+            del samples
+            samples = None
 
         metric_logger.synchronize_between_processes()
-        logging.info("Averaged stats: " + str(metric_logger.global_avg()))
+
+        avg_student_loss = total_student_loss / num_steps
+        avg_kd_loss = total_kd_loss / num_steps
+        avg_total_loss = total_total_loss / num_steps
+
+        logging.info(f"==> [Epoch {epoch}] AVG Student Loss: {avg_student_loss:.4f}, "
+                    f"AVG KD Loss: {avg_kd_loss:.4f}, AVG Total Loss: {avg_total_loss:.4f}")
+
         return {
             k: "{:.3f}".format(meter.global_avg)
             for k, meter in metric_logger.meters.items()
@@ -164,6 +206,7 @@ class Runner:
 
     @torch.no_grad()
     def valid_epoch(self, epoch, split, decode=False, save_json=False):
+        """Validation epoch."""
         if not self.dryrun:
             model = self.unwrap_dist_model(self.model)
             model.eval()
@@ -200,7 +243,7 @@ class Runner:
                     "total": 1,
                 }
 
-            if decode:
+            if decode and not self.dryrun:
                 if model.prompt_dict:
                     if self.test_prompt_dict is None:
                         prompts = None
@@ -254,6 +297,7 @@ class Runner:
         return ret
 
     def save_result(self, result, result_dir, filename):
+        """Save evaluation results (JSON) for each rank."""
         result_file = os.path.join(
             result_dir, "%s_rank%d.json" % (filename, get_rank())
         )
@@ -270,24 +314,22 @@ class Runner:
 
         if is_main_process():
             logging.info("rank %d starts merging results." % get_rank())
-            result = []
+            merged_result = []
 
             for rank in range(get_world_size()):
-                result_file = os.path.join(
-                    result_dir, "%s_rank%d.json" % (filename, rank)
-                )
+                this_file = os.path.join(result_dir, "%s_rank%d.json" % (filename, rank))
                 try:
-                    res = json.load(open(result_file, "r"))
+                    res = json.load(open(this_file, "r"))
                 except Exception as e:
-                    logging.warning(f"Error reading {result_file}. Error: {e}")
-                    res = json.load(open(result_file, "r", encoding="utf-8"))
-                result += res
+                    logging.warning(f"Error reading {this_file}. Error: {e}")
+                    res = json.load(open(this_file, "r", encoding="utf-8"))
+                merged_result += res
 
             try:
-                json.dump(result, open(final_result_file, "w"), ensure_ascii=False)
+                json.dump(merged_result, open(final_result_file, "w"), ensure_ascii=False)
             except Exception as e:
                 logging.warning(f"Error saving {final_result_file}. Error: {e}")
-                json.dump(result, open(final_result_file, "w", encoding="utf-8"), ensure_ascii=False)
+                json.dump(merged_result, open(final_result_file, "w", encoding="utf-8"), ensure_ascii=False)
 
             print("result file saved to %s" % final_result_file)
 
@@ -314,12 +356,10 @@ class Runner:
                     if agg_metrics > best_agg_metric:
                         best_agg_metric = agg_metrics
                         best_epoch = cur_epoch
-
-                        self.save_checkpoint(cur_epoch, is_best=True)                    
+                        self.save_checkpoint(cur_epoch, is_best=True)
 
                     valid_log.update({"best_epoch": best_epoch})
                     self.log_stats(valid_log, split_name="valid")
-                    wandb.log({"valid/epoch": cur_epoch, "valid/agg_metrics": agg_metrics})
 
             self.save_checkpoint(cur_epoch, is_best=False)
 
@@ -350,39 +390,30 @@ class Runner:
 
     @main_process
     def save_checkpoint(self, cur_epoch, is_best=False):
-
+        """
+        Save the checkpoint at the current epoch.
+        """
         model_no_ddp = self.unwrap_dist_model(self.model)
-        
+        param_grad_dic = {
+            k: v.requires_grad for (k, v) in model_no_ddp.named_parameters()
+        }
+
+        state_dict = model_no_ddp.state_dict()
+        # remove parameters that do not require grad
+        for k in list(state_dict.keys()):
+            if k in param_grad_dic.keys() and not param_grad_dic[k]:
+                del state_dict[k]
+
+        save_obj = {
+            "model": state_dict,
+            "optimizer": self.optimizer.state_dict(),
+            "config": self.config.to_dict(),
+            "scaler": self.scaler.state_dict() if self.scaler else None,
+            "epoch": cur_epoch,
+        }
         save_to = os.path.join(
             self.output_dir,
             "checkpoint_{}.pth".format("best" if is_best else cur_epoch),
         )
-        logging.info(f"Saving checkpoint at epoch {cur_epoch} to {save_to}.")
-
-        if self.pruned:
-            save_obj = {
-                "model": model_no_ddp, 
-                "optimizer": self.optimizer.state_dict(),
-                "config": self.config.to_dict(),
-                "scaler": self.scaler.state_dict() if self.scaler else None,
-                "epoch": cur_epoch,
-            }
-        else:
-            param_grad_dic = {
-                k: v.requires_grad for (k, v) in model_no_ddp.named_parameters()
-            }
-            state_dict = model_no_ddp.state_dict()
-
-            for k in list(state_dict.keys()):
-                if k in param_grad_dic.keys() and not param_grad_dic[k]:
-                    del state_dict[k]
-
-            save_obj = {
-                "model": state_dict,  
-                "optimizer": self.optimizer.state_dict(),
-                "config": self.config.to_dict(),
-                "scaler": self.scaler.state_dict() if self.scaler else None,
-                "epoch": cur_epoch,
-            }
-
+        logging.info("Saving checkpoint at epoch {} to {}.".format(cur_epoch, save_to))
         torch.save(save_obj, save_to)

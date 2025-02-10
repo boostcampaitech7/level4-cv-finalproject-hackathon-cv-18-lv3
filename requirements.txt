@@ -1,6 +1,6 @@
-# torch==2.5.1
-# torchaudio==2.5.1
-peft==0.3.0
+torch==2.5.1
+torchaudio==2.5.1
+peft==0.14.0
 soundfile==0.12.1
 librosa==0.10.2.post1
 transformers==4.47.1
@@ -19,4 +19,3 @@ ipykernel
 seaborn
 datashader
 umap-learn
-
