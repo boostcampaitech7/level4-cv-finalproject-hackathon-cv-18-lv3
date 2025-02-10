@@ -14,14 +14,14 @@
 
 model:
   # paths
-  llama_path: "D:\\work_dir\\ckp\\llama"
-  whisper_path: "D:\\work_dir\\ckp\\whisper"
-  beats_path: "D:\\work_dir\\ckp\\beats\\BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
+  llama_path: "/ckp/llama_1b"
+  whisper_path: "/ckp/whisper_medium"
+  beats_path: "/ckp/beats/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
 
   token: "<hf_token>" # Use hf token to access gated repositories
   only_preprocessor: False
 
-  ckpt: "outputs_stage2/checkpoint_best.pth" # model used for decoding
+  ckpt: "/ckp/nota_final_checkpoint.pth" # model used for decoding
 
   freeze_whisper: True
   freeze_beats: True
@@ -45,8 +45,8 @@ model:
 
   multi_prompt: True
   prompt_template: "USER: {}\nASSISTANT:"
-  prompt_path: "D:\\work_dir\\level4-cv-finalproject-hackathon-cv-18-lv3\\data\\prompts\\train_prompt.json"
-  test_prompt_path: "D:\\work_dir\\level4-cv-finalproject-hackathon-cv-18-lv3\\data\\prompts\\test_prompt.json"
+  prompt_path: "data/prompts/train_prompt.json"
+  test_prompt_path: "data/prompts/test_prompt.json"
   max_txt_len: 300
   end_sym: "</s>"
 
@@ -62,11 +62,11 @@ generate:
   end_sym: "</s>"
 
 datasets:
-  prefix: "D:\\work_dir\\data\\"
+  prefix: "/data/data"
   # test_ann_path: "data/test_aac.json" # (deprecated next update)
-  test_ann_path_asr: "D:\\work_dir\\data\\test_asr.json"
-  test_ann_path_aac: "D:\\work_dir\\data\\test_aac.json"
-  whisper_path: "D:\\work_dir\\ckp\\whisper"
+  test_ann_path_asr: "/data/data/test_asr.json"
+  test_ann_path_aac: "/data/data/test_aac.json"
+  whisper_path: "/data/ckp/whisper_medium"
 
 run:
   batch_size_eval: 8
