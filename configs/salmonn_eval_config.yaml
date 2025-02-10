@@ -14,14 +14,14 @@
 
 model:
   # paths
-  llama_path: "/data/ckp/llama"
-  whisper_path: "/data/ckp/whisper"
-  beats_path: "/data/ckp/beats/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
+  llama_path: "/ckp/llama_1b"
+  whisper_path: "/ckp/whisper_medium"
+  beats_path: "/ckp/beats/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
 
   token: "<hf_token>" # Use hf token to access gated repositories
   only_preprocessor: False
 
-  ckpt: "outputs_stage2/202501181940/checkpoint_best.pth" # model used for decoding
+  ckpt: "/ckp/nota_final_checkpoint.pth" # model used for decoding
 
   freeze_whisper: True
   freeze_beats: True
@@ -48,7 +48,7 @@ model:
   prompt_path: "data/prompts/train_prompt.json"
   test_prompt_path: "data/prompts/test_prompt.json"
   max_txt_len: 300
-  end_sym: "<|end_of_text|>"
+  end_sym: "</s>"
 
 generate:
   max_new_tokens: 200
@@ -59,14 +59,14 @@ generate:
   top_p: 0.9
   repetition_penalty: 1.0
   length_penalty: 1.0
-  end_sym: "<|end_of_text|>"
+  end_sym: "</s>"
 
 datasets:
   prefix: "/data/data"
   # test_ann_path: "data/test_aac.json" # (deprecated next update)
   test_ann_path_asr: "/data/data/test_asr.json"
   test_ann_path_aac: "/data/data/test_aac.json"
-  whisper_path: "/data/ckp/whisper"
+  whisper_path: "/data/ckp/whisper_medium"
 
 run:
   batch_size_eval: 8

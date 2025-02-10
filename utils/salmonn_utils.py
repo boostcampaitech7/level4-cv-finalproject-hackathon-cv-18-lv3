@@ -77,7 +77,7 @@ class SALMONNTestDataset(Dataset):
 
     def __getitem__(self, index):
         ann = self.annotation[index]
-        audio_path = os.path.join(self.prefix, ann["path"])
+        audio_path = os.path.join(self.prefix, ann["path"].translate(str.maketrans("/", "\\")))
         try:
             audio, sr = sf.read(audio_path)
         except:

@@ -42,6 +42,7 @@ def parse_args():
         "change to --cfg-options instead.",
     )
     parser.add_argument("--dryrun", action='store_true', help='if True, use dummy model and skip forward/backward')
+    parser.add_argument("--pruned", action='store_true', help='check if llm pruned')
 
     return parser.parse_args()
 
@@ -96,6 +97,8 @@ def main():
 
     # build model
     if not args.dryrun:
+        if args.pruned:
+            model_config['pruned'] = True
         model = load_model(model_config)
     else: # load small dummy language model
         from transformers import AutoModelForCausalLM
