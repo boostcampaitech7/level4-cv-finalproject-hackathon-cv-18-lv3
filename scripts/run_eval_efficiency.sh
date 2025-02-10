@@ -1,1 +1,1 @@
-nohup python evaluate_efficiency_salmonn.py 
+python evaluate_efficiency_salmonn.py 
