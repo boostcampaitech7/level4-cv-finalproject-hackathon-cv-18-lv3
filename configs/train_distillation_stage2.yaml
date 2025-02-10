@@ -22,21 +22,18 @@ model:
   teacher_whisper_path : "/data/ckp/whisper"
 
 
-  # s / t 를 나눠주자
-  # 
   token: "<hf_token>"  # Use hf token to access gated repositories
   
   ckpt_teacher: "/data/ckp/salmonn/salmonn_3b_nota.pth" #"model ckpt" # if not "", load model from ckpt for training or evaluation
-  ckpt_student: "" # 없으면 안 넣어도 됨
+  ckpt_student: "/data/hyeonrl_github/outputs_stage2/202501270949/checkpoint_17.pth" # 없으면 안 넣어도 됨
   kd : True  # knowledge distillation 실행 유무 
 
   temperature:  2.0
-  alpha: 0.5
+  alpha: 0.3
 
   freeze_whisper: True
   freeze_beats: True
   
-
   # window-level Q-Former
   use_speech_Qformer: True
   freeze_speech_QFormer: False
@@ -64,9 +61,9 @@ model:
 datasets:
   prefix: "/data/data"
   
-  train_ann_path: "/data/data/stage1_train_filtered_silence_0001_ratio_0975.json" # clean dataset
-  valid_ann_path: "/data/data/stage1_valid.json"
-  test_ann_path: "/data/data/stage1_test.json"
+  train_ann_path: "/data/data/stage2_train.json" # clean dataset
+  valid_ann_path: "/data/data/stage2_valid.json"
+  test_ann_path: "/data/data/stage2_test.json"
 
   whisper_path: "/data/ckp/whisper_medium"
 
@@ -74,22 +71,22 @@ datasets:
 run:
   # log & settings
   seed: 42
-  output_dir: "/data/hj/level4-cv-finalproject-hackathon-cv-18-lv3/result/outputs_stage1_only"
+  output_dir: "/data/hj/level4-cv-finalproject-hackathon-cv-18-lv3/result/outputs_stage2_only"
   evaluate: False # if True, only evaluate model on test data
-  exp_name: "llama-3.2-1B-1percent-stage1"
+  exp_name: "llama-3.2-1B-kd"
 
   log_freq: 5
   epoch_based: False
   iters_per_epoch: 3000
   accum_grad_iters: 1
-  batch_size_train: 8
-  batch_size_eval: 8
-  num_workers: 1
+  batch_size_train: 4
+  batch_size_eval: 4
+  num_workers: 8
 
   device: "cuda"
   use_distributed: True
   amp: True
-  world_size: 2
+  world_size: 1
   dist_url: "env://"
 
   # optimizer & scheduler

@@ -102,7 +102,8 @@ class SALMONN(nn.Module):
         token=None,
         only_preprocessor=None,
         pruned = False,
-        pruned_path = ""
+        pruned_path = "", 
+        kd = False 
     ):
         super().__init__()
 
@@ -119,6 +120,7 @@ class SALMONN(nn.Module):
         self.qlora = qlora
         self.pruned = pruned
         self.pruned_path = pruned_path
+        self.kd = kd 
 
         logging.info('Loading LLaMA Tokenizer')
         self.llama_tokenizer = AutoTokenizer.from_pretrained(llama_path, use_fast=False, token=token)
@@ -167,6 +169,7 @@ class SALMONN(nn.Module):
 
                     self.llama_model.gradient_checkpointing_enable()
                     self.llama_model = prepare_model_for_kbit_training(self.llama_model)
+                    
                 else:
                     self.llama_model = AutoModelForCausalLM.from_pretrained(
                         llama_path,
@@ -190,6 +193,8 @@ class SALMONN(nn.Module):
                 self.llama_model = get_peft_model(self.llama_model, self.peft_config)
                 self.llama_model.print_trainable_parameters()
                 logging.info('LoRA Training')
+        
+
 
         assert whisper_path
         logging.info('Loading Whisper Model')
@@ -397,21 +402,22 @@ class SALMONN(nn.Module):
         else:
             return embeds, atts
 
-    def forward(self, samples, verbose=False):
+    def forward(self, samples, given_prompt="", verbose=False):
         # detect whether there are multi tasks in this batch
         task = list(set(samples["task"]))
         if len(task) > 1 or "QA" in task:
             self.multi_prompt = True
 
         # prepare prompts
-        if self.prompt_dict:
+        if self.prompt_dict and given_prompt == "":
             if self.multi_prompt:
                 prompt = [random.choice(self.prompt_dict[task]) for task in samples["task"]]
                 if "Q" in samples:
                     prompt = [p.format(q) if '{}' in p else p for p, q in zip(prompt, samples["Q"]) ]
             else:
                 prompt = random.choice(self.prompt_dict[samples["task"][0]])
-
+        else:
+            prompt = given_prompt
         # use speech/audio encoder to encode speech/audio
         spectrogram = samples["spectrogram"]
         raw_wav = samples.get("raw_wav", None)
@@ -476,6 +482,8 @@ class SALMONN(nn.Module):
             print(f"llama size : {model_size / (1024 ** 2):.2f} MB")
         
             loss = outputs.loss
+            if self.kd == True :    
+                logits = outputs.logits 
 
         if verbose:
             nvocab = self.llama_model.config.vocab_size
@@ -488,7 +496,10 @@ class SALMONN(nn.Module):
         if verbose:
             return {"loss": loss, "correct": correct, "total": total}
 
-        return {"loss": loss}
+        if self.kd == True : 
+            return {"loss" : loss, "logits" : logits, "prompt":prompt} 
+        else :
+            return {"loss": loss}
 
     def generate(self, samples, generate_cfg, prompts=None):
         batch_size = samples["spectrogram"].shape[0]
@@ -568,6 +579,7 @@ class SALMONN(nn.Module):
         token = config.get("token", None)
         pruned = config.get("pruned", False)
         pruned_path = config.get("pruned_path","")
+        kd = config.get("kd", False)
         only_preprocessor = config.get("only_preprocessor", None)
 
         model = cls(
@@ -599,7 +611,8 @@ class SALMONN(nn.Module):
             token=token,
             only_preprocessor=only_preprocessor,
             pruned = pruned,
-            pruned_path = pruned_path
+            pruned_path = pruned_path, 
+            kd = kd 
         )
 
         ckpt_path = config.get("ckpt", "")
