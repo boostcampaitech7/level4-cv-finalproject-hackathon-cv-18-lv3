@@ -107,7 +107,7 @@ def main(args):
     # Load data
     dataloader = get_dataset(cfg.config.datasets, cfg.config.run, args.task, args.make_submission)
 
-    with open("data/prompts/test_prompt.json", "r") as f:
+    with open("data\\prompts\\test_prompt.json", "r", encoding="UTF-8") as f:
         test_prompt = json.load(f)
 
     # Evaluation

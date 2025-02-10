@@ -15,13 +15,13 @@
 
 model:
   # paths
-  llama_path: "/data/ckp/llama"
-  whisper_path: "/data/ckp/whisper"
-  beats_path: "/data/ckp/beats/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
+  llama_path: "D:\work_dir/data/ckp/llama"
+  whisper_path: "D:\work_dir/data/ckp/whisper"
+  beats_path: "D:\work_dir/data/ckp/beats/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt"
 
   token: "<hf_token>"  # Use hf token to access gated repositories
   
-  ckpt: "/data/ckp/salmonn/salmonn_3b_nota.pth" #"model ckpt" # if not "", load model from ckpt for training or evaluation
+  ckpt: "D:\work_dir/data/ckp/salmonn/salmonn_3b_nota.pth" #"model ckpt" # if not "", load model from ckpt for training or evaluation
 
   freeze_whisper: True
   freeze_beats: True

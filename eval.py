@@ -237,6 +237,7 @@ def main(args):
 
     for task in args.tasks:
         args.task = task
+
         print(f"{task} evaluation start")
         if task in ('asr', 'aac'):
             cfg = replace_test_ann_path(cfg)
