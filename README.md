@@ -14,12 +14,49 @@ Audio understanding benchmarks에 대한 baseline 모델의 정확도를 유지�
 
 <br>
 
-# 2. Directory 📁
 
-- 프로젝트 구조
-
+#  2. Project Structure 🗂️
+```plaintext
+📦 level4-cv-finalproject-hackathon-cv-18-lv3/
+ ┣ 📂 configs
+ ┃ ┣ 📜 train_stage1.yaml
+ ┃ ┣ 📜 train_stage2.yaml
+ ┃ ┣ 📜 salmonn_eval_config.yaml
+ ┃ ┗ 📜 … 
+ ┣ 📂 data
+ ┣ 📂 demo
+ ┣ 📂 eda
+ ┣ 📂 wandb
+ ┣ 📂 LLMPruner
+ ┣ 📂 models
+ ┃ ┣ 📂 beats
+ ┃ ┃ ┗ 📜 … 
+ ┃ ┣ 📜 salmonn.py
+ ┃ ┗ 📜 utils.py
+ ┣ 📂 scripts
+ ┃ ┣ 📜 stage1_run.sh
+ ┃ ┣ 📜 stage2_run.sh
+ ┃ ┣ 📜 run_eval_efficiency.sh
+ ┃ ┗ 📜 … 
+ ┣ 📂 utils
+ ┃ ┣ 📜 utils.py
+ ┃ ┣ 📜 dist_utils.py
+ ┃ ┣ 📜 salmonn_utils.py
+ ┃ ┣ 📜 logger.py
+ ┃ ┣ 📜 metrics.py
+ ┃ ┗ 📜 runner.py
+ ┣ 📜 config.py
+ ┣ 📜 dataset.py
+ ┣ 📜 optims.py
+ ┣ 📜 train.py
+ ┣ 📜 eval.py
+ ┣ 📜 evaluate_salmonn.py
+ ┣ 📜 evaluate_efficiency_salmonn.py
+ ┗ 📜 … 
+```
 <br>
 <br>
+
 
 
 # 3. Requirements 💻
@@ -48,3 +85,5 @@ bash scripts/run_eval_efficiency.sh
 ```
 <br>
 
+# 5. Reference 🔗
+[1] [사용 가이드](https://www.notion.so/196cc24adf1c80ab9fd5e6426aff0024)
