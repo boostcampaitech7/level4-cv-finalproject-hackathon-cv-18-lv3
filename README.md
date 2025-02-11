@@ -1,6 +1,6 @@
 # 🔊 오디오 언어모델의 경량 모델링 레서피 탐구
 > Audio adapter의 결합 및 사전학습을 통해, 언어모델은 음성/음악/환경음 등의 소리를 이해하고 다양한 downstream task를 수행할 수 있게 되었습니다. VRAM의 크기가 작은 전형적인 디바이스 환경에서는 오디오 언어모델에 대한 경량 모델링이 필수적입니다.
-Audio understanding benchmarks에 대한 baseline 모델의 정확도를 유지하면서도, 더 작고 빠른 모델을 만드는 레서피를 디자인해 봅시다.
+Audio understanding benchmarks에 대한 baseline 모델의 정확도를 유지하면서도, 더 작고 빠른 모델을 만드는 레서피를 디자인 해봅시다.
 
 
 <br>
@@ -14,9 +14,12 @@ Audio understanding benchmarks에 대한 baseline 모델의 정확도를 유지�
 
 <br>
 
-# 2. Directory
+# 2. Directory 📁
 
-- 프로젝트 구조 추가
+- 프로젝트 구조
+
+<br>
+<br>
 
 
 # 3. Requirements 💻
