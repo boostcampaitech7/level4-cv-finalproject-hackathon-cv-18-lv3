@@ -1,0 +1,12 @@
+__pycache__
+*.pyc
+.vscode
+nohup.out
+/outputs_stage1_only
+/outputs_stage2
+/wandb
+/checkpoints
+/submission_results
+.env
+nohup*.out
+dev
