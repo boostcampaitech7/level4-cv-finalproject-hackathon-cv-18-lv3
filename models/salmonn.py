@@ -312,9 +312,7 @@ class SALMONN(nn.Module):
                     encoder_attention_mask=speech_atts,
                     return_dict=True,
                 )
-                end_time = time.time()
-                print(f"Qformer time taken : {end_time - start_time}s")
-                
+
                 # speech-QFormer check end
                 
                 speech_embeds = self.speech_llama_proj(query_output.last_hidden_state)
@@ -326,34 +324,16 @@ class SALMONN(nn.Module):
             else:
                 raise NotImplementedError
 
-        et = time.time()
-        print(f"total time for QFormer to output speech embeds : {et - st}")
-        model_size = sum(p.numel() for p in self.speech_Qformer.parameters()) * 4
-        print(f"Qformer params : {model_size}")
-        print(f"Qformer size: {model_size / (1024 ** 2):.2f} MB")
         return speech_embeds, speech_atts
 
     def encode_speech(self, spectrogram, raw_wav=None, audio_padding_mask=None):
         with self.maybe_autocast(dtype=self.dtype):
             speech_embeds = self.speech_encoder(spectrogram, return_dict=True).last_hidden_state
-            end_time = time.time()
-            print(f"whispers time taken : {end_time - start_time}s")
-            
-            model_size = sum(p.numel() for p in self.speech_encoder.parameters()) * 4
-            print(f"whispers params : {model_size}")
-            print(f"Whispers size: {model_size / (1024 ** 2):.2f} MB")
             # whisper efficiency check end
             
             if self.beats_path and raw_wav is not None:
                 # beat efficiency check
-                start_time = time.time()
                 audio_embeds, _ = self.beats.extract_features(raw_wav, padding_mask=audio_padding_mask, feature_only=True)
-                end_time = time.time()
-                print(f"beats time taken : {end_time - start_time}s")
-                
-                model_size = sum(p.numel() for p in self.beats.parameters()) * 4
-                print(f"beats params : {model_size}")
-                print(f"beats size : {model_size / (1024 ** 2):.2f} MB")
                 # beat efficiency check end
             else:
                 audio_embeds = None
@@ -426,7 +406,6 @@ class SALMONN(nn.Module):
         speech_embeds, speech_atts = self.encode_speech(spectrogram, raw_wav=raw_wav, audio_padding_mask=audio_padding_mask)
 
         # LLM input preparation efficiency check
-        start_time = time.time()
         # wrap speech_embeds with prompts
         if self.prompt_dict:
             speech_embeds, speech_atts = self.prompt_wrap(speech_embeds, speech_atts, prompt, multi_prompt=self.multi_prompt)
@@ -465,8 +444,6 @@ class SALMONN(nn.Module):
         inputs_embeds = torch.cat([bos_embeds, speech_embeds, to_regress_embeds], dim=1)
         attention_mask = torch.cat([atts_bos, speech_atts, to_regress_tokens.attention_mask], dim=1)
 
-        end_time = time.time()
-        print(f"LLM input preparation time taken : {end_time - start_time}s")
         # calulate loss
         with self.maybe_autocast(self.dtype):
             outputs = self.llama_model(
@@ -475,12 +452,7 @@ class SALMONN(nn.Module):
                 return_dict=True,
                 labels=targets,
             )
-            end_time = time.time()
-            print(f"LLM to generate ouput time taken : {end_time - start_time}s")
-            model_size = sum(p.numel() for p in self.llama_model.parameters()) * 4
-            print(f"llama params : {model_size}")
-            print(f"llama size : {model_size / (1024 ** 2):.2f} MB")
-        
+
             loss = outputs.loss
             if self.kd == True :    
                 logits = outputs.logits 
